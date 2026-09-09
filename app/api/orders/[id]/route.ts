@@ -6,8 +6,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const rows = await query('SELECT * FROM orders WHERE id = ?', [id]);
   if (!rows.length) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const tickets = await query('SELECT ticketNumber FROM order_tickets WHERE orderId = ?', [id]);
-  const order = { ...rows[0], ticketNumbers: tickets.map((t: any) => t.ticketNumber) };
+  const tickets = await query('SELECT ticketNumber, verificationToken FROM order_tickets WHERE orderId = ?', [id]);
+  const order = { ...rows[0], ticketNumbers: tickets.map((t: any) => t.ticketNumber), ticketTokens: tickets.map((t: any) => t.verificationToken) };
 
   return NextResponse.json(order);
 }

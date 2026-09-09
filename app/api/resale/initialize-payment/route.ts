@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool, { query } from '@/lib/db';
-import { initializePayChanguPayment } from '@/lib/paychangu';
+import { getPayChanguAppUrl, initializePayChanguPayment } from '@/lib/paychangu';
 import { calculateResaleFees } from '@/lib/fees';
 
 export async function POST(req: NextRequest) {
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       `SELECT r.id, r.orderId, r.eventId, r.sellerId, r.price, r.status, r.ticketId, e.title as eventTitle, e.date as eventDate, e.time as eventTime, e.location as eventLocation, e.venue as eventVenue
        FROM resale_listings r
        JOIN events e ON r.eventId = e.id
-       WHERE r.id = ? LIMIT 1`,
+      WHERE r.id = ? AND DATEDIFF(e.date, CURDATE()) = 1 LIMIT 1`,
       [listingId]
     );
 
@@ -91,9 +91,7 @@ export async function POST(req: NextRequest) {
       conn.release();
     }
 
-    const host = req.headers.get('host') || 'localhost:3000';
-    const protocol = req.headers.get('x-forwarded-proto') || 'http';
-    const baseUrl = `${protocol}://${host}`;
+    const baseUrl = getPayChanguAppUrl(req.url);
 
     const paychanguResult = await initializePayChanguPayment({
       amount: feeBreakdown.resalePrice,

@@ -14,6 +14,7 @@ export interface Event {
   price: number;
   ticketsTotal: number;
   ticketsAvailable: number;
+  ticketTypes?: Array<{ name: string; price: number }>;
   organizerId: string;
   organizer?: string;
   status: 'active' | 'draft' | 'sold_out' | 'cancelled';
@@ -59,11 +60,22 @@ export default getPool();
 
 export function formatRowToEvent(row: any): Event {
   let formattedDate = row.date;
-  if (row.date instanceof Date) {
-    formattedDate = row.date.toISOString().split('T')[0];
-  } else if (typeof row.date === 'string' && row.date.includes('T')) {
+if (row.date instanceof Date) {
+  const day = String(row.date.getDate()).padStart(2, '0');
+  const month = row.date.toLocaleString('en-GB', { month: 'short' });
+  const year = row.date.getFullYear();
+  formattedDate = `${day} ${month} ${year}`;
+} else if (typeof row.date === 'string' && row.date.includes('T')) {
+  const dateObj = new Date(row.date);
+  if (!isNaN(dateObj.getTime())) {
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const month = dateObj.toLocaleString('en-GB', { month: 'short' });
+    const year = dateObj.getFullYear();
+    formattedDate = `${day} ${month} ${year}`;
+  } else {
     formattedDate = row.date.split('T')[0];
   }
+}
 
   return {
     id: String(row.id),
@@ -84,6 +96,7 @@ export function formatRowToEvent(row: any): Event {
     status: row.status || 'active',
     busTransport: Boolean(row.busTransport),
     seatingChart: Boolean(row.seatingChart),
+    ticketTypes: typeof row.ticketTypes === 'string' ? (() => { try { return JSON.parse(row.ticketTypes); } catch { return []; } })() : (row.ticketTypes || []),
     createdAt: row.createdAt ? String(row.createdAt) : undefined,
   };
 }
@@ -95,7 +108,7 @@ export async function getEventsFromDB(category?: string, search?: string): Promi
       SELECT e.*, u.fullName as organizerName
       FROM events e
       LEFT JOIN users u ON e.organizerId = u.uid
-      WHERE e.status = 'active'
+      WHERE e.status = 'active' AND (e.date > CURDATE() OR (e.date = CURDATE() AND e.time >= CURTIME()))
     `;
     const params: any[] = [];
 

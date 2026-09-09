@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, execute } from '@/lib/db';
 import pool from '@/lib/db';
 import { getAuthUser } from '@/lib/auth-server';
-import { initializePayChanguPayment } from '@/lib/paychangu';
+import { getPayChanguAppUrl, initializePayChanguPayment } from '@/lib/paychangu';
 import { randomUUID } from 'crypto';
 
 export async function POST(req: NextRequest) {
@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
 
   const txRef = `ZOS-${randomUUID().replace(/-/g, '').slice(0, 24).toUpperCase()}`;
   try {
+    const appUrl = getPayChanguAppUrl(req.url);
     const payment = await initializePayChanguPayment({
       amount: Number(order.totalAmount),
       currency: 'MWK',
@@ -31,8 +32,8 @@ export async function POST(req: NextRequest) {
       firstName: order.firstName,
       lastName: order.lastName,
       txRef,
-      callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin}/api/payments/webhook`,
-      returnUrl: `${process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin}/checkout/${orderId}?payment=pending`,
+      callbackUrl: `${appUrl}/api/payments/webhook`,
+      returnUrl: `${appUrl}/checkout/${orderId}?payment=pending`,
     });
     await execute(
       `INSERT INTO payments (id, orderId, providerReference, idempotencyKey, amount, status)
@@ -42,6 +43,8 @@ export async function POST(req: NextRequest) {
     await execute('UPDATE orders SET paymentStatus = \'PROCESSING\', providerReference = ? WHERE id = ?', [payment.providerReference, orderId]);
     return NextResponse.json(payment);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Payment initialization failed' }, { status: 502 });
+    const message = error instanceof Error ? error.message : 'Payment initialization failed';
+    console.error('PayChangu initialization error:', message);
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 }

@@ -22,7 +22,7 @@ export async function POST(
     const [orderRows] = await conn.execute(
       `SELECT r.*, o.status AS orderStatus
        FROM resale_listings r JOIN orders o ON o.id = r.orderId
-       WHERE r.id = ? FOR UPDATE`,
+      WHERE r.id = ? AND DATEDIFF(o.eventDate, CURDATE()) = 1 FOR UPDATE`,
       [id]
     );
     const listing = (orderRows as { orderId: string; sellerId: string; price: number; status: string; orderStatus: string }[])[0];

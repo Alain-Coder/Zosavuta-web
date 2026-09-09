@@ -21,7 +21,7 @@ export default function EventDetailPage() {
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
-  const [tier, setTier] = useState<'Regular' | 'VIP'>('Regular');
+  const [tier, setTier] = useState('Standard');
   const [resale, setResale] = useState<{ id: string; price: number; sellerId: string } | null>(null);
 
   useEffect(() => {
@@ -101,7 +101,9 @@ export default function EventDetailPage() {
     return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   };
 
-  const unitPrice = tier === 'VIP' ? event.price * 2 : event.price;
+  const ticketTypes = event.ticketTypes?.length ? event.ticketTypes : [{ name: 'Standard', price: event.price }];
+  const selectedTicketType = ticketTypes.find((item) => item.name === tier) || ticketTypes[0];
+  const unitPrice = Number(selectedTicketType.price);
   const totalPrice = unitPrice * quantity;
 
   return (
@@ -196,33 +198,18 @@ export default function EventDetailPage() {
           {/* Booking Sidebar */}
           <div>
             <Card className="sticky top-20 p-6">
-              <div className="mb-6">
+              {/* <div className="mb-6">
                 <p className="text-sm text-muted-foreground mb-2">Price per ticket</p>
                 <div className="text-4xl font-bold text-primary">
                   MWK {unitPrice.toLocaleString()}
                 </div>
-              </div>
+              </div> */}
 
               {/* Ticket Tier Selection */}
               <div className="mb-6">
                 <Label className="text-sm font-medium mb-2 block">Ticket Tier</Label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setTier('Regular')}
-                    className={`p-3 rounded-xl border text-left transition ${tier === 'Regular' ? 'border-primary bg-primary/10 font-bold text-primary' : 'border-border hover:bg-muted text-muted-foreground'}`}
-                  >
-                    <div className="text-xs font-bold uppercase tracking-wider">Regular</div>
-                    <div className="text-sm font-extrabold">MWK {event.price.toLocaleString()}</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTier('VIP')}
-                    className={`p-3 rounded-xl border text-left transition ${tier === 'VIP' ? 'border-amber-500 bg-amber-500/10 font-bold text-amber-600 shadow-md shadow-amber-500/10' : 'border-border hover:bg-muted text-muted-foreground'}`}
-                  >
-                    <div className="text-xs font-bold uppercase tracking-wider text-amber-600 flex items-center gap-1">👑 VIP Pass</div>
-                    <div className="text-sm font-extrabold">MWK {(event.price * 2).toLocaleString()}</div>
-                  </button>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {ticketTypes.map((type) => <button key={type.name} type="button" onClick={() => setTier(type.name)} className={`p-3 rounded-xl border text-left transition ${tier === type.name ? 'border-primary bg-primary/10 font-bold text-primary' : 'border-border hover:bg-muted text-muted-foreground'}`}><div className="text-xs font-bold uppercase tracking-wider">{type.name}</div><div className="text-sm font-extrabold">MWK {Number(type.price).toLocaleString()}</div></button>)}
                 </div>
               </div>
 

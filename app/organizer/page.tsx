@@ -57,6 +57,9 @@ export default function CreateEventPage() {
   const [ticketData, setTicketData] = useState({
     ticketsTotal: '500',
     price: '3500',
+    standardPrice: '3500',
+    vipPrice: '5000',
+    vvipPrice: '7500',
     category: 'music',
     time: '18:00',
   });
@@ -238,6 +241,11 @@ export default function CreateEventPage() {
           ticketsTotal: parseInt(ticketData.ticketsTotal),
           category: ticketData.category,
           time: ticketData.time,
+          ticketTypes: [
+            { name: 'Standard', price: Number(ticketData.standardPrice) },
+            { name: 'VIP', price: Number(ticketData.vipPrice) },
+            { name: 'VVIP', price: Number(ticketData.vvipPrice) },
+          ],
         }),
       });
 
@@ -387,6 +395,15 @@ export default function CreateEventPage() {
                     <Input id="event-time" type="time" value={eventData.time}
                       onChange={(e) => setEventData({ ...eventData, time: e.target.value })} required />
                   </Field>
+                </div>
+                <div className="space-y-3 rounded-lg border border-border p-4">
+                  <FieldLabel>Ticket Types and Prices (MWK) *</FieldLabel>
+                  {(['standardPrice', 'vipPrice', 'vvipPrice'] as const).map((field, index) => (
+                    <div key={field} className="grid grid-cols-[1fr_2fr] items-center gap-3">
+                      <span className="font-semibold">{['Standard', 'VIP', 'VVIP'][index]}</span>
+                      <Input type="number" min="1" value={ticketData[field]} onChange={(e) => setTicketData({ ...ticketData, [field]: e.target.value })} required />
+                    </div>
+                  ))}
                 </div>
                 <Field>
                   <FieldLabel htmlFor="location">Location/City *</FieldLabel>

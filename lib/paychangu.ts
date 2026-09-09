@@ -1,4 +1,8 @@
-const PAYCHANGU_BASE_URL = 'https://api.paychangu.com';
+const PAYCHANGU_BASE_URL = (process.env.PAYCHANGU_API_URL || 'https://api.paychangu.com').replace(/\/$/, '');
+
+export function getPayChanguAppUrl(requestUrl: string): string {
+  return (process.env.NEXT_PUBLIC_APP_URL || new URL(requestUrl).origin).replace(/\/$/, '');
+}
 
 export interface PaymentInitialization {
   checkoutUrl: string;
@@ -18,7 +22,7 @@ export async function initializePayChanguPayment(input: {
   const secretKey = process.env.PAYCHANGU_SECRET_KEY;
   if (!secretKey) throw new Error('PayChangu is not configured');
 
-  const response = await fetch(`${PAYCHANGU_BASE_URL}/payment/initialize`, {
+  const response = await fetch(`${PAYCHANGU_BASE_URL}/payment`, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -36,14 +40,18 @@ export async function initializePayChanguPayment(input: {
       return_url: input.returnUrl,
     }),
   });
-  const data = await response.json().catch(() => null);
-  if (!response.ok || data?.status !== 'success' || !data?.data?.checkout_url) {
-    throw new Error(data?.message || 'PayChangu payment initialization failed');
+  const responseText = await response.text();
+  let data: any = null;
+  try { data = responseText ? JSON.parse(responseText) : null; } catch { /* provider returned non-JSON */ }
+  const checkoutUrl = data?.data?.checkout_url;
+  if (!response.ok || data?.status !== 'success' || !checkoutUrl) {
+    const providerMessage = data?.message || data?.error || responseText.slice(0, 300) || 'PayChangu payment initialization failed';
+    throw new Error(`PayChangu initialization failed (${response.status}): ${providerMessage}`);
   }
 
   return {
-    checkoutUrl: data.data.checkout_url,
-    providerReference: data.data.tx_ref || input.txRef,
+    checkoutUrl,
+    providerReference: data.data.data?.tx_ref || data.data.tx_ref || input.txRef,
   };
 }
 

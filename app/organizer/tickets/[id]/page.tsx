@@ -25,6 +25,9 @@ export default function TicketDetailsPage() {
   const [ticketData, setTicketData] = useState({
     ticketsTotal: '500',
     price: '3500',
+    standardPrice: '3500',
+    vipPrice: '5000',
+    vvipPrice: '7500',
     category: 'music',
     time: '18:00',
   });
@@ -58,6 +61,9 @@ export default function TicketDetailsPage() {
         setTicketData({
           ticketsTotal: data.ticketsTotal ? String(data.ticketsTotal) : '500',
           price: data.price ? String(data.price) : '3500',
+          standardPrice: data.ticketTypes?.[0]?.price ? String(data.ticketTypes[0].price) : '3500',
+          vipPrice: data.ticketTypes?.[1]?.price ? String(data.ticketTypes[1].price) : '5000',
+          vvipPrice: data.ticketTypes?.[2]?.price ? String(data.ticketTypes[2].price) : '7500',
           category: data.category || 'music',
           time: data.time || '18:00',
         });
@@ -85,6 +91,11 @@ export default function TicketDetailsPage() {
           ticketsTotal: parseInt(ticketData.ticketsTotal),
           category: ticketData.category,
           time: ticketData.time,
+          ticketTypes: [
+            { name: 'Standard', price: Number(ticketData.standardPrice) },
+            { name: 'VIP', price: Number(ticketData.vipPrice) },
+            { name: 'VVIP', price: Number(ticketData.vvipPrice) },
+          ],
         }),
       });
 
@@ -153,6 +164,15 @@ export default function TicketDetailsPage() {
               <Input type="number" min="1" value={ticketData.price}
                 onChange={(e) => setTicketData({ ...ticketData, price: e.target.value })} required />
             </Field>
+          </div>
+          <div className="space-y-3 rounded-lg border border-border p-4">
+            <FieldLabel>Ticket Types and Prices (MWK) *</FieldLabel>
+            {(['standardPrice', 'vipPrice', 'vvipPrice'] as const).map((field, index) => (
+              <div key={field} className="grid grid-cols-[1fr_2fr] items-center gap-3">
+                <span className="font-semibold">{['Standard', 'VIP', 'VVIP'][index]}</span>
+                <Input type="number" min="1" value={ticketData[field]} onChange={(e) => setTicketData({ ...ticketData, [field]: e.target.value })} required />
+              </div>
+            ))}
           </div>
           <Field>
             <FieldLabel>Event Time *</FieldLabel>

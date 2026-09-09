@@ -34,6 +34,7 @@ const NAV_ITEMS = [
   { href: '/organizer/dashboard', label: 'Dashboard', icon: LayoutDashboardIcon },
   { href: '/organizer', label: 'Create Event', icon: PlusIcon, exact: true },
   { href: '/organizer/events', label: 'My Events', icon: CalendarIcon },
+  { href: '/organizer/physical-tickets', label: 'Physical Tickets', icon: TicketIcon },
 ];
 
 export function OrganizerSidebar() {

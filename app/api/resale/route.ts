@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     FROM resale_listings r
     JOIN orders o ON o.id = r.orderId
     LEFT JOIN events e ON e.id = r.eventId
-    WHERE r.status = ?
+    WHERE r.status = ? AND DATEDIFF(e.date, CURDATE()) = 1
   `;
   const params: unknown[] = [status];
 
@@ -63,7 +63,8 @@ export async function POST(req: NextRequest) {
   }
 
   const orders = await query<{ userId: string; eventId: number; status: string; price: number; eventDate: string }>(
-    'SELECT userId, eventId, status, price, eventDate FROM orders WHERE id = ?',
+    `SELECT o.userId, o.eventId, o.status, o.price, o.eventDate
+     FROM orders o JOIN events e ON e.id = o.eventId WHERE o.id = ? AND DATEDIFF(e.date, CURDATE()) = 1`,
     [orderId]
   );
 
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
   if (order.userId !== user.uid) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  if (order.status !== 'confirmed' || new Date(`${order.eventDate}T23:59:59`) <= new Date()) {
+  if (order.status !== 'confirmed') {
     return NextResponse.json({ error: 'Only confirmed tickets can be listed' }, { status: 400 });
   }
 

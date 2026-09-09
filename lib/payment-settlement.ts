@@ -1,6 +1,7 @@
 import pool from '@/lib/db';
 import { calculatePrimaryOrderFees, calculateResaleFees } from '@/lib/fees';
 import { recordTicketOwnershipHistory } from '@/lib/tickets';
+import { randomBytes } from 'crypto';
 
 export async function completeVerifiedPayment(paymentId: string, orderId: string, providerReference: string) {
   const conn = await pool.getConnection();
@@ -95,8 +96,8 @@ export async function completeVerifiedPayment(paymentId: string, orderId: string
       for (let index = ticketCount; index < order.quantity; index += 1) {
         const ticketNumber = `TK-${orderId.slice(-8)}-${index + 1}`;
         const [ticketResult] = await conn.execute(
-          'INSERT INTO order_tickets (orderId, ticketNumber, currentOwnerId, status) VALUES (?, ?, ?, \'VALID\')',
-          [orderId, ticketNumber, order.userId]
+          'INSERT INTO order_tickets (orderId, ticketNumber, verificationToken, currentOwnerId, status) VALUES (?, ?, ?, ?, \'VALID\')',
+          [orderId, ticketNumber, randomBytes(32).toString('hex'), order.userId]
         );
         const insertedTicketId = (ticketResult as any).insertId;
 

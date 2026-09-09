@@ -28,6 +28,8 @@ import {
   EyeIcon,
   UserIcon,
   ExternalLinkIcon,
+  PencilIcon,
+  Trash2Icon,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { getAuthHeaders } from '@/lib/auth-client';
@@ -117,7 +119,7 @@ export default function OrganizerEventsPage() {
 
         const headers = await getAuthHeaders();
         const [eventsRes, submissionsRes] = await Promise.all([
-          fetch(`/api/events?organizerId=${user.uid}&status=all`),
+          fetch('/api/organizer/events', { headers }),
           fetch('/api/event-submissions', { headers }),
         ]);
 
@@ -164,6 +166,17 @@ export default function OrganizerEventsPage() {
     }
   };
 
+  const handleDeleteEvent = async (event: EventItem) => {
+    if (!window.confirm(`Delete or cancel "${event.title}"? Events with ticket history will be cancelled.`)) return;
+    try {
+      const response = await fetch(`/api/organizer/events/${event.id}`, { method: 'DELETE', headers: await getAuthHeaders() });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to delete event');
+      toast.success(data.cancelled ? 'Event cancelled and history preserved' : 'Event deleted');
+      setEvents((current) => current.filter((item) => item.id !== event.id));
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to delete event'); }
+  };
+
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -176,6 +189,10 @@ export default function OrganizerEventsPage() {
   }
 
   const activeEventsCount = events.filter((e) => e.status === 'active').length;
+  const now = new Date();
+  const isEnded = (event: EventItem) => event.status === 'cancelled' || new Date(`${event.date}T${event.time || '23:59'}:00`) < now;
+  const currentEvents = events.filter((event) => event.status === 'active' && !isEnded(event));
+  const endedEvents = events.filter(isEnded);
   const pendingSubmissionsCount = submissions.filter((s) => s.status === 'pending').length;
 
   const filteredOrders = eventOrders.filter((order) => {
@@ -236,7 +253,10 @@ export default function OrganizerEventsPage() {
       <Tabs defaultValue="published" className="space-y-6">
         <TabsList className="bg-muted p-1 rounded-xl">
           <TabsTrigger value="published" className="rounded-lg font-bold text-xs uppercase tracking-wider">
-            Published Events ({events.length})
+            Current Events ({currentEvents.length})
+          </TabsTrigger>
+          <TabsTrigger value="ended" className="rounded-lg font-bold text-xs uppercase tracking-wider">
+            Ended & Completed ({endedEvents.length})
           </TabsTrigger>
           <TabsTrigger value="submissions" className="rounded-lg font-bold text-xs uppercase tracking-wider">
             Submissions & Approvals ({submissions.length})
@@ -245,7 +265,7 @@ export default function OrganizerEventsPage() {
 
         {/* Published Events Tab */}
         <TabsContent value="published" className="space-y-4">
-          {events.length === 0 ? (
+          {currentEvents.length === 0 ? (
             <Card className="p-12 text-center border-dashed border-2">
               <CalendarIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-xl font-bold text-foreground">No Published Events Yet</h3>
@@ -260,7 +280,7 @@ export default function OrganizerEventsPage() {
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {events.map((event) => {
+              {currentEvents.map((event) => {
                 const sold = event.ticketsTotal - event.ticketsAvailable;
                 const percentSold = event.ticketsTotal > 0 ? Math.round((sold / event.ticketsTotal) * 100) : 0;
                 const eventImgUrl = event.image && event.image.trim() !== '' ? event.image : '/images/hero-bg.jpg';
@@ -334,6 +354,11 @@ export default function OrganizerEventsPage() {
                         <span className="text-[10px] uppercase font-bold text-muted-foreground block">Ticket Price</span>
                         <span className="text-lg font-black text-primary">MWK {Number(event.price).toLocaleString()}</span>
                       </div>
+                      <div className="flex items-center gap-2">
+                      <Link href={`/organizer/events/${event.id}/edit`} onClick={(e) => e.stopPropagation()}>
+                        <Button size="icon-sm" variant="outline" title="Edit event"><PencilIcon className="w-4 h-4" /></Button>
+                      </Link>
+                      <Button size="icon-sm" variant="outline" title="Delete or cancel event" onClick={(e) => { e.stopPropagation(); void handleDeleteEvent(event); }}><Trash2Icon className="w-4 h-4" /></Button>
                       <Button
                         size="sm"
                         className="rounded-xl font-bold text-xs uppercase tracking-wider bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground gap-1.5 cursor-pointer"
@@ -345,10 +370,35 @@ export default function OrganizerEventsPage() {
                         <EyeIcon className="w-4 h-4" />
                         View Ticket Details →
                       </Button>
+                      </div>
+                      <Link href={`/organizer/physical-tickets?eventId=${event.id}`} onClick={(e) => e.stopPropagation()}>
+                        <Button size="sm" variant="outline" className="rounded-xl font-bold text-xs gap-1.5 cursor-pointer">
+                          <TicketIcon className="w-4 h-4" /> Physical Tickets
+                        </Button>
+                      </Link>
                     </div>
                   </Card>
                 );
               })}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="ended" className="space-y-4">
+          {endedEvents.length === 0 ? (
+            <Card className="p-12 text-center border-dashed border-2">
+              <CheckCircle2Icon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-xl font-bold text-foreground">No Ended Events</h3>
+              <p className="text-muted-foreground text-sm mt-1">Past and cancelled events will remain available here for your records.</p>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {endedEvents.map((event) => (
+                <Card key={event.id} className="overflow-hidden border border-border bg-card">
+                  <div className="relative h-40 bg-muted"><img src={event.image || '/images/hero-bg.jpg'} alt={event.title} className="h-full w-full object-cover" /><Badge className="absolute right-3 top-3 bg-slate-800 text-white">{event.status === 'cancelled' ? 'CANCELLED' : 'COMPLETED'}</Badge></div>
+                  <div className="p-5"><h3 className="text-xl font-black">{event.title}</h3><p className="mt-2 text-sm text-muted-foreground">{event.date} at {event.time}</p><p className="text-sm text-muted-foreground">{event.venue}, {event.location}</p><div className="mt-4 flex gap-2"><Button size="sm" variant="outline" onClick={() => handleOpenEventDetails(event)}><EyeIcon className="w-4 h-4" /> View history</Button><Link href={`/organizer/events/${event.id}/edit`}><Button size="sm" variant="outline"><PencilIcon className="w-4 h-4" /> Edit</Button></Link></div></div>
+                </Card>
+              ))}
             </div>
           )}
         </TabsContent>

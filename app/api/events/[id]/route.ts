@@ -12,7 +12,7 @@ export async function GET(
     }
 
     const event = await getEventByIdFromDB(id);
-    if (!event) {
+    if (!event || event.status !== 'active' || event.date < new Date().toISOString().slice(0, 10)) {
       return NextResponse.json({ success: false, error: 'Event not found' }, { status: 404 });
     }
 

@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { AlertCircle, Eye, EyeOff, UserIcon, BriefcaseIcon, UsersIcon } from 'lucide-react';
+import { AlertCircle, ArrowLeftIcon, Eye, EyeOff, UserIcon, BriefcaseIcon, UsersIcon } from 'lucide-react';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -38,7 +38,7 @@ function AuthContent() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState<SignupRole>('customer');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
@@ -190,7 +190,7 @@ function AuthContent() {
                       <button
                         type="button"
                         onClick={() => setShowPassword((prev) => !prev)}
-                        className="absolute inset-y-0 right-2 inline-flex items-center justify-center rounded-lg p-1 text-muted-foreground hover:text-foreground transition-colors"
+                        className="absolute inset-y-0 right-2 inline-flex items-center justify-center rounded-lg p-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
                       >
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -338,6 +338,11 @@ function AuthContent() {
                 {mode === 'signin' ? 'Sign up' : 'Sign in'}
               </button>
             </p>
+          </div>
+          <div className="mt-4 text-center">
+            <button type="button" onClick={() => router.replace('/')} className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary">
+              <ArrowLeftIcon className="h-4 w-4" /> Back to home
+            </button>
           </div>
         </div>
       </Card>

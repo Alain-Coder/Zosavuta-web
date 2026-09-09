@@ -13,14 +13,40 @@
 
   <style>
     :root {
-      --bg: #090d16;
-      --card-bg: rgba(18, 24, 38, 0.75);
-      --card-border: rgba(255, 255, 255, 0.1);
-      --primary: #f97316;
-      --primary-hover: #ea580c;
-      --primary-glow: rgba(249, 115, 22, 0.35);
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
+      /* Zosavuta Color Palette - Navy + Teal/Green */
+      --background: oklch(0.98 0 0);
+      --foreground: oklch(0.15 0 0);
+      --card: oklch(0.99 0 0);
+      --card-foreground: oklch(0.15 0 0);
+      --popover: oklch(0.99 0 0);
+      --popover-foreground: oklch(0.15 0 0);
+      --primary: oklch(0.6 0.18 155);
+      --primary-foreground: oklch(0.99 0 0);
+      --secondary: oklch(0.25 0.08 250);
+      --secondary-foreground: oklch(0.99 0 0);
+      --muted: oklch(0.96 0 0);
+      --muted-foreground: oklch(0.4 0 0);
+      --accent: oklch(0.6 0.18 155);
+      --accent-foreground: oklch(0.99 0 0);
+      --destructive: oklch(0.6 0.2 30);
+      --destructive-foreground: oklch(0.99 0 0);
+      --border: oklch(0.9 0 0);
+      --input: oklch(0.9 0 0);
+      --ring: oklch(0.6 0.18 155);
+      --chart-1: oklch(0.6 0.18 155);
+      --chart-2: oklch(0.25 0.08 250);
+      --chart-3: oklch(0.5 0.15 160);
+      --chart-4: oklch(0.7 0.12 155);
+      --chart-5: oklch(0.8 0.1 155);
+      --radius: 0.75rem;
+      --sidebar: oklch(0.98 0 0);
+      --sidebar-foreground: oklch(0.15 0 0);
+      --sidebar-primary: oklch(0.6 0.18 155);
+      --sidebar-primary-foreground: oklch(0.99 0 0);
+      --sidebar-accent: oklch(0.94 0 0);
+      --sidebar-accent-foreground: oklch(0.15 0 0);
+      --sidebar-border: oklch(0.9 0 0);
+      --sidebar-ring: oklch(0.6 0.18 155);
     }
 
     * {
@@ -31,8 +57,8 @@
 
     body {
       font-family: 'Inter', sans-serif;
-      background-color: var(--bg);
-      color: var(--text);
+      background-color: var(--secondary);
+      color: var(--secondary-foreground);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -50,11 +76,12 @@
       transform: translateX(-50%);
       width: 600px;
       height: 600px;
-      background: radial-gradient(circle, var(--primary-glow) 0%, rgba(0,0,0,0) 70%);
+      background: radial-gradient(circle, var(--primary) 0%, rgba(0,0,0,0) 70%);
       border-radius: 50%;
       filter: blur(80px);
       pointer-events: none;
       z-index: 0;
+      opacity: 0.12;
     }
 
     .bg-blob-2 {
@@ -63,21 +90,22 @@
       right: -100px;
       width: 400px;
       height: 400px;
-      background: radial-gradient(circle, rgba(234, 88, 12, 0.2) 0%, rgba(0,0,0,0) 70%);
+      background: radial-gradient(circle, var(--accent) 0%, rgba(0,0,0,0) 70%);
       border-radius: 50%;
       filter: blur(90px);
       pointer-events: none;
       z-index: 0;
+      opacity: 0.08;
     }
 
     .grid-pattern {
       position: absolute;
       inset: 0;
-      background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+      background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
       background-size: 32px 32px;
       pointer-events: none;
       z-index: 0;
-      opacity: 0.6;
+      opacity: 0.4;
     }
 
     /* Header & Branding */
@@ -96,25 +124,25 @@
       align-items: center;
       gap: 0.75rem;
       text-decoration: none;
-      color: var(--text);
+      color: var(--secondary-foreground);
     }
 
     .logo-icon {
       width: 42px;
       height: 42px;
-      background: linear-gradient(135deg, var(--primary), #c2410c);
+      background: linear-gradient(135deg, var(--primary), var(--chart-3));
       border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 8px 20px var(--primary-glow);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
     }
 
     .logo-icon svg {
       width: 24px;
       height: 24px;
       fill: none;
-      stroke: #ffffff;
+      stroke: var(--secondary-foreground);
       stroke-width: 2.2;
       stroke-linecap: round;
       stroke-linejoin: round;
@@ -131,6 +159,7 @@
       font-size: 1.35rem;
       letter-spacing: -0.04em;
       line-height: 1;
+      color: var(--secondary-foreground);
     }
 
     .brand-tag {
@@ -143,7 +172,7 @@
     }
 
     .header-link {
-      color: var(--text-muted);
+      color: rgba(255, 255, 255, 0.6);
       text-decoration: none;
       font-size: 0.8rem;
       font-weight: 700;
@@ -151,15 +180,15 @@
       letter-spacing: 0.1em;
       padding: 0.5rem 1rem;
       border-radius: 999px;
-      border: 1px solid var(--card-border);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       background: rgba(255, 255, 255, 0.03);
       transition: all 0.2s ease;
     }
 
     .header-link:hover {
-      color: var(--text);
-      border-color: rgba(255, 255, 255, 0.25);
-      background: rgba(255, 255, 255, 0.08);
+      color: var(--secondary-foreground);
+      border-color: rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.06);
     }
 
     /* Main Container */
@@ -180,9 +209,9 @@
       gap: 0.5rem;
       padding: 0.4rem 1rem;
       border-radius: 999px;
-      background: rgba(249, 115, 22, 0.12);
-      border: 1px solid rgba(249, 115, 22, 0.3);
-      color: var(--primary);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.8);
       font-size: 0.7rem;
       font-weight: 800;
       text-transform: uppercase;
@@ -213,6 +242,7 @@
       line-height: 1;
       text-transform: uppercase;
       margin-bottom: 1.25rem;
+      color: var(--secondary-foreground);
     }
 
     h1 span.highlight {
@@ -222,7 +252,7 @@
 
     .subtitle {
       font-size: clamp(1rem, 2vw, 1.15rem);
-      color: var(--text-muted);
+      color: rgba(255, 255, 255, 0.7);
       max-width: 580px;
       line-height: 1.6;
       font-weight: 500;
@@ -240,8 +270,8 @@
     }
 
     .timer-card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.06);
       border-radius: 20px;
       padding: 1.25rem 0.75rem;
       backdrop-filter: blur(16px);
@@ -254,7 +284,7 @@
 
     .timer-card:hover {
       transform: translateY(-4px);
-      border-color: rgba(249, 115, 22, 0.4);
+      border-color: var(--primary);
     }
 
     .timer-val {
@@ -262,7 +292,7 @@
       font-weight: 900;
       font-size: clamp(1.75rem, 4vw, 2.5rem);
       line-height: 1;
-      color: var(--text);
+      color: var(--secondary-foreground);
       margin-bottom: 0.35rem;
     }
 
@@ -271,7 +301,7 @@
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.15em;
-      color: var(--text-muted);
+      color: rgba(255, 255, 255, 0.5);
     }
 
     /* Subscription Box */
@@ -284,8 +314,8 @@
     .subscribe-form {
       display: flex;
       align-items: center;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.06);
       padding: 0.35rem 0.35rem 0.35rem 1.25rem;
       border-radius: 16px;
       backdrop-filter: blur(12px);
@@ -301,19 +331,19 @@
       background: transparent;
       border: none;
       outline: none;
-      color: var(--text);
+      color: var(--secondary-foreground);
       font-family: inherit;
       font-size: 0.9rem;
       width: 100%;
     }
 
     .subscribe-form input::placeholder {
-      color: rgba(148, 163, 184, 0.6);
+      color: rgba(255, 255, 255, 0.4);
     }
 
     .subscribe-form button {
       background: var(--primary);
-      color: #ffffff;
+      color: var(--primary-foreground);
       border: none;
       outline: none;
       padding: 0.85rem 1.5rem;
@@ -326,11 +356,11 @@
       cursor: pointer;
       white-space: nowrap;
       transition: background 0.2s ease, transform 0.2s ease;
-      box-shadow: 0 4px 14px var(--primary-glow);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
     }
 
     .subscribe-form button:hover {
-      background: var(--primary-hover);
+      background: var(--chart-3);
       transform: scale(1.02);
     }
 
@@ -339,9 +369,9 @@
       margin-top: 1rem;
       padding: 0.85rem 1.25rem;
       border-radius: 12px;
-      background: rgba(34, 197, 94, 0.12);
-      border: 1px solid rgba(34, 197, 94, 0.3);
-      color: #4ade80;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--primary);
+      color: var(--primary);
       font-size: 0.8rem;
       font-weight: 600;
     }
@@ -352,17 +382,17 @@
       max-width: 1200px;
       padding: 2rem 1.5rem;
       display: flex;
-      flex-direction: flex-row;
+      flex-direction: row;
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
       z-index: 10;
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
     }
 
     .footer-copy {
       font-size: 0.75rem;
-      color: var(--text-muted);
+      color: rgba(255, 255, 255, 0.4);
       font-weight: 600;
       letter-spacing: 0.05em;
     }
@@ -374,7 +404,7 @@
     }
 
     .footer-links a {
-      color: var(--text-muted);
+      color: rgba(255, 255, 255, 0.4);
       text-decoration: none;
       font-size: 0.75rem;
       font-weight: 700;
@@ -398,6 +428,10 @@
       }
       .subscribe-form button {
         width: 100%;
+      }
+      footer {
+        flex-direction: column;
+        text-align: center;
       }
     }
   </style>
@@ -424,8 +458,6 @@
         <span class="brand-tag">Tickets MW</span>
       </div>
     </a>
-
-    <a href="https://dashboard.zosavuta.com" class="header-link">Dashboard Portal &rarr;</a>
   </header>
 
   <!-- Main Content -->
@@ -435,42 +467,11 @@
       Malawi's Premier Event Ticketing Platform
     </div>
 
-    <h1>SOMETHING <span class="highlight">EXTRAORDINARY</span> IS COMING</h1>
+    <h1>SOMETHING <span class="highlight">EXTRAORDINARY </span> IS COMING</h1>
 
     <p class="subtitle">
       We are upgrading Zosavuta to bring you a faster, fully dynamic event discovery and ticketing platform across Malawi. Stay tuned!
     </p>
-
-    <!-- Countdown Timer -->
-    <div class="timer-grid">
-      <div class="timer-card">
-        <span class="timer-val" id="days">00</span>
-        <span class="timer-lbl">Days</span>
-      </div>
-      <div class="timer-card">
-        <span class="timer-val" id="hours">00</span>
-        <span class="timer-lbl">Hours</span>
-      </div>
-      <div class="timer-card">
-        <span class="timer-val" id="minutes">00</span>
-        <span class="timer-lbl">Minutes</span>
-      </div>
-      <div class="timer-card">
-        <span class="timer-val" id="seconds">00</span>
-        <span class="timer-lbl">Seconds</span>
-      </div>
-    </div>
-
-    <!-- Email Subscription -->
-    <div class="subscribe-box">
-      <form class="subscribe-form" id="notify-form">
-        <input type="email" id="email-input" placeholder="Enter your email to get early access..." required />
-        <button type="submit">Notify Me</button>
-      </form>
-      <div class="success-alert" id="success-alert">
-        🎉 Thank you! You have been added to our VIP priority release list.
-      </div>
-    </div>
   </main>
 
   <!-- Footer -->
@@ -480,47 +481,8 @@
     </div>
 
     <div class="footer-links">
-      <a href="https://dashboard.zosavuta.com/login">Organizers</a>
       <a href="mailto:support@zosavuta.com">Contact Support</a>
     </div>
   </footer>
-
-  <script>
-    // 1. Dynamic Countdown Timer (Target: 14 Days from now)
-    const targetDate = new Date().getTime() + (14 * 24 * 60 * 60 * 1000);
-
-    function updateCountdown() {
-      const now = new Date().getTime();
-      const difference = targetDate - now;
-
-      if (difference < 0) return;
-
-      const days = Math.floor(difference / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((difference % (1000 * 60)) / 1000);
-
-      document.getElementById('days').innerText = String(days).padStart(2, '0');
-      document.getElementById('hours').innerText = String(hours).padStart(2, '0');
-      document.getElementById('minutes').innerText = String(minutes).padStart(2, '0');
-      document.getElementById('seconds').innerText = String(seconds).padStart(2, '0');
-    }
-
-    setInterval(updateCountdown, 1000);
-    updateCountdown();
-
-    // 2. Interactive Form Submission
-    document.getElementById('notify-form').addEventListener('submit', function(e) {
-      e.preventDefault();
-      const email = document.getElementById('email-input').value;
-      if (email) {
-        document.getElementById('notify-form').style.display = 'none';
-        document.getElementById('success-alert').style.display = 'block';
-      }
-    });
-
-    // 3. Current Year
-    document.getElementById('year').innerText = new Date().getFullYear();
-  </script>
 </body>
 </html>

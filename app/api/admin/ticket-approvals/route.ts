@@ -49,8 +49,8 @@ export async function POST(req: NextRequest) {
       let eventId = sub.eventId;
       if (!eventId) {
         const result = await execute(
-          `INSERT INTO events (title, description, fullDescription, category, date, time, location, venue, image, price, ticketsTotal, ticketsAvailable, organizerId, status, busTransport, seatingChart)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+          `INSERT INTO events (title, description, fullDescription, category, date, time, location, venue, image, price, ticketsTotal, ticketsAvailable, organizerId, status, busTransport, seatingChart, ticketTypes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
           [
             sub.title,
             sub.description,
@@ -67,13 +67,14 @@ export async function POST(req: NextRequest) {
             sub.organizerId,
             sub.busTransport || 0,
             sub.seatingChart || 0,
+            sub.ticketTypes || JSON.stringify([{ name: 'Standard', price: Number(sub.price || 0) }]),
           ]
         );
         eventId = result.insertId;
       } else {
         await execute(
-          `UPDATE events SET status = 'active', price = ?, ticketsTotal = ?, ticketsAvailable = ? WHERE id = ?`,
-          [sub.price || 0, sub.ticketsTotal || 0, sub.ticketsTotal || 0, eventId]
+          `UPDATE events SET status = 'active', price = ?, ticketsTotal = ?, ticketsAvailable = ?, ticketTypes = ? WHERE id = ?`,
+          [sub.price || 0, sub.ticketsTotal || 0, sub.ticketsTotal || 0, sub.ticketTypes || JSON.stringify([{ name: 'Standard', price: Number(sub.price || 0) }]), eventId]
         );
       }
 

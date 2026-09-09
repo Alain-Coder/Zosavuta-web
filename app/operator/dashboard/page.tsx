@@ -1,3 +1,5 @@
+"use client"
+
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
@@ -35,7 +37,7 @@ export default function OperatorDashboard() {
             router.push('/dashboard');
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [authLoading, user, router]);
 

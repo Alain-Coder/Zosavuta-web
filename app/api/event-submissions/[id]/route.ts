@@ -79,7 +79,7 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { price, ticketsTotal, category, time } = body;
+    const { price, ticketsTotal, category, time, ticketTypes } = body;
 
     if (price == null || ticketsTotal == null) {
       return NextResponse.json(
@@ -101,9 +101,9 @@ export async function PATCH(
     await execute(
       `UPDATE event_submissions
        SET price = ?, ticketsTotal = ?, ticketDetailsSubmitted = 1,
-           category = COALESCE(?, category), time = COALESCE(?, time)
+           category = COALESCE(?, category), time = COALESCE(?, time), ticketTypes = ?
        WHERE id = ? AND status = 'pending'`,
-      [parsedPrice, parsedTickets, category || null, time || null, submissionId]
+      [parsedPrice, parsedTickets, category || null, time || null, JSON.stringify(Array.isArray(ticketTypes) ? ticketTypes : []), submissionId]
     );
 
     return NextResponse.json({

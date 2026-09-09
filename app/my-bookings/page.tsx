@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertCircle, CalendarIcon, MapPinIcon, TagIcon, InfoIcon, TicketIcon, ArrowRightIcon, ArmchairIcon, ClockIcon } from 'lucide-react';
+import { AlertCircle, CalendarIcon, MapPinIcon, TagIcon, InfoIcon, TicketIcon, ArrowRightIcon, ArmchairIcon, ClockIcon, DownloadIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { getAuthHeaders } from '@/lib/auth-client';
 import {
@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { QRCodeSVG } from 'qrcode.react';
+import { downloadTicketPdf } from '@/lib/ticket-pdf';
 
 interface Booking {
   id: string;
@@ -37,6 +38,7 @@ interface Booking {
   status: 'confirmed' | 'used' | 'refunded' | 'pending';
   bookingDate: string;
   ticketNumbers: string[];
+  ticketTokens?: (string | null)[];
   isListed?: boolean;
   resalePrice?: number;
   tier?: string;
@@ -277,6 +279,15 @@ function BookingCard({
     }
   };
 
+  const downloadTickets = async () => {
+    const tokens = booking.ticketTokens || [];
+    if (!tokens.length || tokens.every((token) => !token)) {
+      toast({ variant: 'destructive', title: 'Ticket download unavailable', description: 'This ticket was issued before secure QR verification was enabled.' });
+      return;
+    }
+    await downloadTicketPdf({ title: booking.eventTitle, date: formatDate(booking.eventDate), time: booking.eventTime, venue: booking.eventVenue, location: booking.eventLocation }, tokens.flatMap((token, index) => token ? [{ ticketNumber: booking.ticketNumbers?.[index] || `Ticket ${index + 1}`, token, ticketType: booking.tier || 'Standard', price: booking.price }] : []));
+  };
+
   const resaleDialogModal = (
     <Dialog open={showResaleDialog} onOpenChange={setShowResaleDialog}>
       <DialogContent className="sm:max-w-[425px]">
@@ -312,9 +323,11 @@ function BookingCard({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setShowResaleDialog(false)}>Cancel</Button>
+          <Button className="cursor-pointer" variant="outline" onClick={() => setShowResaleDialog(false)}>
+            Cancel
+          </Button>
           <Button
-            className="bg-orange-600 hover:bg-orange-700 text-white"
+            className="bg-orange-600 hover:bg-orange-700 text-white cursor-pointer"
             onClick={handleResaleListing}
             disabled={isSubmitting}
           >
@@ -325,10 +338,10 @@ function BookingCard({
     </Dialog>
   );
 
-  if (booking.tier === 'VIP' || booking.tier?.toUpperCase() === 'VIP') {
+  if (booking.tier === 'VIP' || booking.tier?.toUpperCase() === 'VIP' || booking.tier === 'VVIP' || booking.tier?.toUpperCase() === 'VVIP') {
     return (
       <div className="relative group my-4">
-        {/* VIP Ticket Container */}
+        {/* VIP-VVIP Ticket Container */}
         <div className="flex flex-col md:flex-row bg-gradient-to-r from-slate-950 via-zinc-900 to-black rounded-[24px] border-2 border-amber-500/50 shadow-[0_0_40px_rgba(245,158,11,0.2)] text-white overflow-hidden transition-all duration-300 hover:shadow-2xl hover:border-amber-400">
 
           {/* Holographic / Metallic background glow */}
@@ -368,7 +381,7 @@ function BookingCard({
                     <h3 className="text-2xl font-black tracking-tight text-white uppercase">{booking.eventTitle}</h3>
                     <div className="flex gap-2 mt-2">
                       <span className="inline-flex px-3 py-1 rounded-full text-[10px] font-black bg-gradient-to-r from-amber-600 via-amber-400 to-amber-600 text-black items-center gap-1.5 uppercase tracking-widest shadow-lg shadow-amber-500/20">
-                        👑 Elite VIP All Access
+                        {booking.tier || 'Standard'} Ticket
                       </span>
                       {booking.isListed && (
                         <span className="inline-flex px-3 py-1 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 items-center gap-1.5 uppercase tracking-widest shadow-sm">
@@ -400,7 +413,7 @@ function BookingCard({
                 <div className="flex items-center gap-4 bg-zinc-900/60 p-3 rounded-xl border border-zinc-800 w-fit">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Ticket Type</p>
-                    <p className="font-bold text-amber-400 uppercase tracking-wider">VIP PASS</p>
+                    <p className="font-bold text-amber-400 uppercase tracking-wider">{booking.tier || 'Standard'}</p>
                   </div>
                   <div className="w-px h-8 bg-zinc-800" />
                   <div>
@@ -419,14 +432,14 @@ function BookingCard({
               <div className="flex gap-3 flex-wrap mt-6">
                 {status === 'confirmed' && (
                   <>
-                    <Button variant="outline" className="gap-2 h-10 rounded-xl font-bold text-xs uppercase tracking-wider bg-zinc-900 hover:bg-zinc-800 text-white border-zinc-700 hover:border-zinc-600">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
-                      Download Pass
+                    <Button onClick={downloadTickets} variant="outline" className="gap-2 h-10 rounded-xl font-bold text-xs uppercase tracking-wider bg-zinc-900 hover:bg-zinc-800 text-white border-zinc-700 hover:border-zinc-600 cursor-pointer">
+                      <DownloadIcon className="w-4 h-4" />
+                      Download Ticket
                     </Button>
                     {!booking.isListed && (
                       <Button
                         onClick={() => setShowResaleDialog(true)}
-                        className="gap-2 h-10 rounded-xl font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white border-none shadow-md shadow-orange-600/20"
+                        className="gap-2 h-10 rounded-xl font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white border-none shadow-md shadow-orange-600/20 cursor-pointer"
                       >
                         <TagIcon className="w-4 h-4" />
                         Resell Ticket
@@ -441,7 +454,7 @@ function BookingCard({
                   </div>
                 )}
                 {status === 'used' && (
-                  <Button disabled variant="outline" className="h-10 rounded-xl font-bold text-xs uppercase tracking-wider border-zinc-800 text-zinc-500 bg-transparent">
+                  <Button disabled variant="outline" className="h-10 rounded-xl font-bold text-xs uppercase tracking-wider border-zinc-800 text-zinc-500 bg-transparent cursor-pointer">
                     Event Completed
                   </Button>
                 )}
@@ -467,15 +480,14 @@ function BookingCard({
               <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500/80 mb-4">Admit VIP {booking.quantity}</p>
 
               <div className="bg-white p-3.5 rounded-2xl shadow-xl mx-auto mb-4 border border-amber-500/20 hover:shadow-2xl transition-all duration-300">
-                <QRCodeSVG
-                  value={`https://zosavuta.com/verify-ticket/${booking.id}`}
-                  size={110}
-                  bgColor="#ffffff"
-                  fgColor="#000000"
-                  level="Q"
-                  includeMargin={true}
-                  className="mx-auto"
-                />
+                <div className="flex flex-wrap justify-center gap-3">
+                  {(booking.ticketTokens || [null]).map((token, index) => token ? (
+                    <div key={token} className="text-center">
+                      <QRCodeSVG value={`${window.location.origin}/tickets/verify/${token}`} size={110} bgColor="#ffffff" fgColor="#000000" level="Q" includeMargin className="mx-auto" />
+                      <p className="mt-1 text-[9px] font-bold text-zinc-600">Ticket {index + 1}</p>
+                    </div>
+                  ) : null)}
+                </div>
               </div>
 
               <p className="text-xs font-mono font-bold text-amber-400 bg-zinc-900 py-1.5 px-3 rounded-lg border border-amber-500/20">
@@ -483,7 +495,7 @@ function BookingCard({
               </p>
 
               <p className="text-[9px] font-black uppercase tracking-[0.25em] text-amber-500 mt-4 animate-pulse">
-                Scan at VIP entrance
+                To be scanned at VIP entrance
               </p>
             </div>
           </div>
@@ -579,9 +591,9 @@ function BookingCard({
             <div className="flex gap-3 flex-wrap mt-6 relative z-10">
               {status === 'confirmed' && (
                 <>
-                  <Button variant="outline" className="gap-2 h-10 rounded-xl font-bold text-xs uppercase tracking-wider">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
-                    Download
+                  <Button onClick={downloadTickets} variant="outline" className="gap-2 h-10 rounded-xl font-bold text-xs uppercase tracking-wider cursor-pointer">
+                    <DownloadIcon className="w-4 h-4" />
+                    Download Tickets
                   </Button>
                   {!booking.isListed && (
                     <Button
@@ -628,15 +640,14 @@ function BookingCard({
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Admit {booking.quantity}</p>
 
             <div className="bg-white p-3.5 rounded-2xl shadow-sm mx-auto mb-4 border border-border/50 hover:shadow-md transition-shadow">
-              <QRCodeSVG
-                value={`https://zosavuta.com/verify-ticket/${booking.id}`}
-                size={110}
-                bgColor="#ffffff"
-                fgColor="#000000"
-                level="Q"
-                includeMargin={true}
-                className="mx-auto"
-              />
+                <div className="flex flex-wrap justify-center gap-3">
+                  {(booking.ticketTokens || [null]).map((token, index) => token ? (
+                    <div key={token} className="text-center">
+                      <QRCodeSVG value={`${window.location.origin}/tickets/verify/${token}`} size={110} bgColor="#ffffff" fgColor="#000000" level="Q" includeMargin className="mx-auto" />
+                      <p className="mt-1 text-[9px] font-bold text-muted-foreground">Ticket {index + 1}</p>
+                    </div>
+                  ) : null)}
+                </div>
             </div>
 
             <p className="text-xs font-mono font-bold text-foreground bg-muted py-1.5 px-3 rounded-lg border border-border/50">
@@ -644,7 +655,7 @@ function BookingCard({
             </p>
 
             <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-4">
-              Scan at entrance
+              To be scanned at the entrance.
             </p>
           </div>
         </div>

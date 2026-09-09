@@ -19,6 +19,7 @@ interface EventDetails {
   venue: string;
   price: number;
   ticketsAvailable: number;
+  ticketTypes?: Array<{ name: string; price: number }>;
 }
 
 function CheckoutContent() {
@@ -34,8 +35,10 @@ function CheckoutContent() {
   const [details, setDetails] = useState({ firstName: '', lastName: '', email: '', phone: '' });
 
   const resaleListingId = searchParams.get('resale');
+  const paymentReturn = searchParams.has('payment') || searchParams.has('paymentStatus');
+  const paymentStatus = searchParams.get('status') || searchParams.get('paymentStatus') || searchParams.get('payment') || 'pending';
   const quantity = resaleListingId ? 1 : Math.max(1, Number(searchParams.get('qty') || 1));
-  const tier = resaleListingId ? 'Resale' : (searchParams.get('tier') === 'VIP' ? 'VIP' : 'Regular');
+  const tier = resaleListingId ? 'Resale' : (searchParams.get('tier') || 'Standard');
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -44,6 +47,10 @@ function CheckoutContent() {
   }, [authLoading, id, resaleListingId, router, user]);
 
   useEffect(() => {
+    if (paymentReturn) {
+      setLoadingEvent(false);
+      return;
+    }
     const loadEvent = async () => {
       try {
         const response = await fetch(`/api/events/${id}`);
@@ -56,7 +63,7 @@ function CheckoutContent() {
       }
     };
     if (id) void loadEvent();
-  }, [id]);
+  }, [id, paymentReturn]);
 
   const startPayment = async (eventSubmit: FormEvent<HTMLFormElement>) => {
     eventSubmit.preventDefault();
@@ -116,6 +123,20 @@ function CheckoutContent() {
   if (authLoading || loadingEvent || !user) {
     return <CheckoutLoading />;
   }
+  if (paymentReturn) {
+    const paymentSucceeded = ['success', 'successful', 'paid', 'completed'].includes(paymentStatus.toLowerCase());
+    return (
+      <main className="mx-auto max-w-xl px-4 py-20">
+        <Card className="p-8 text-center">
+          <CheckCircle2 className={`mx-auto mb-4 h-14 w-14 ${paymentSucceeded ? 'text-emerald-600' : 'text-amber-600'}`} />
+          <h1 className="text-3xl font-black">{paymentSucceeded ? 'Payment successful' : 'Payment received for verification'}</h1>
+          <p className="mt-3 text-muted-foreground">{paymentSucceeded ? 'Your payment was received. Your digital tickets will appear after server-side PayChangu confirmation.' : 'Your payment is being verified by PayChangu. Your tickets will appear once confirmation is complete.'}</p>
+          {searchParams.get('tx_ref') && <p className="mt-4 font-mono text-xs text-muted-foreground">Reference: {searchParams.get('tx_ref')}</p>}
+          <Link href="/my-bookings"><Button className="mt-7 w-full">Go to My Tickets</Button></Link>
+        </Card>
+      </main>
+    );
+  }
   if (!event) {
     return <div className="mx-auto max-w-2xl px-4 py-24 text-center">Event not found.</div>;
   }
@@ -133,7 +154,8 @@ function CheckoutContent() {
     );
   }
 
-  const unitPrice = Number(event.price) * (tier === 'VIP' ? 2 : 1);
+  const configuredType = event.ticketTypes?.find((type) => type.name === tier);
+  const unitPrice = configuredType ? Number(configuredType.price) : Number(event.price);
   const total = unitPrice * quantity;
 
   return (
@@ -166,7 +188,7 @@ function CheckoutContent() {
             </div>
             <div><Label htmlFor="email">Email</Label><Input id="email" type="email" required value={details.email || user.email || ''} onChange={(e) => setDetails({ ...details, email: e.target.value })} /></div>
             <div><Label htmlFor="phone">Phone</Label><Input id="phone" type="tel" required value={details.phone} onChange={(e) => setDetails({ ...details, phone: e.target.value })} /></div>
-            <Button type="submit" disabled={submitting} className="w-full">{submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Connecting to PayChangu...</> : `Pay MWK ${total.toLocaleString()}`}</Button>
+            <Button type="submit" disabled={submitting} className="w-full cursor-pointer">{submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Connecting to PayChangu...</> : `Pay MWK ${total.toLocaleString()}`}</Button>
           </form>
         </Card>
         <Card className="h-fit p-6">

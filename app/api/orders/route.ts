@@ -20,10 +20,17 @@ export async function GET(req: NextRequest) {
 
   const rows = await query(sql, params);
 
-  // Attach ticket numbers to each order
+  // Attach ticket numbers and tokens to each order
   for (const order of rows) {
-    const tickets = await query('SELECT ticketNumber FROM order_tickets WHERE orderId = ?', [order.id]);
+    const tickets = await query('SELECT ticketNumber, verificationToken FROM order_tickets WHERE orderId = ?', [order.id]);
     (order as any).ticketNumbers = tickets.map((t: any) => t.ticketNumber);
+    (order as any).ticketTokens = tickets.map((t: any) => t.verificationToken);
+    if (order.status === 'confirmed' && tickets.length > 0) {
+      const ticketStatuses = await query<{ status: string }>('SELECT status FROM order_tickets WHERE orderId = ?', [order.id]);
+      if (ticketStatuses.length > 0 && ticketStatuses.every((ticket) => ticket.status === 'USED')) {
+        (order as any).status = 'used';
+      }
+    }
   }
 
   return NextResponse.json(rows);
@@ -61,7 +68,7 @@ export async function POST(req: NextRequest) {
     }
 
     const [eventRows] = await conn.execute(
-      `SELECT id, title, date, time, location, venue, image, price, ticketsAvailable, status
+      `SELECT id, title, date, time, location, venue, image, price, ticketTypes, ticketsAvailable, status
        FROM events WHERE id = ? FOR UPDATE`,
       [parsedEventId]
     );
@@ -76,7 +83,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Not enough tickets available' }, { status: 409 });
     }
 
-    const unitPrice = Number(event.price) * (tier === 'VIP' ? 2 : 1);
+    let ticketTypes: Array<{ name: string; price: number }> = [];
+    try { ticketTypes = typeof event.ticketTypes === 'string' ? JSON.parse(String(event.ticketTypes)) : (event.ticketTypes as Array<{ name: string; price: number }> || []); } catch { ticketTypes = []; }
+    const selectedType = ticketTypes.find((item) => item.name.toLowerCase() === String(tier).toLowerCase());
+    if (ticketTypes.length && !selectedType) {
+      await conn.rollback();
+      return NextResponse.json({ error: 'Selected ticket type is not available' }, { status: 400 });
+    }
+    const unitPrice = selectedType ? Number(selectedType.price) : Number(event.price);
     const totalAmount = unitPrice * parsedQuantity;
     const orderId = `ZOS-${randomUUID().replace(/-/g, '').slice(0, 20).toUpperCase()}`;
 
@@ -85,9 +99,9 @@ export async function POST(req: NextRequest) {
         eventVenue, eventImage, quantity, price, totalAmount, status, tier, firstName, lastName,
         email, phone, paymentMethod, busTransport)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [orderId, user.uid, parsedEventId, event.title, event.date, event.time, event.location,
-        event.venue, event.image, parsedQuantity, unitPrice, totalAmount, 'pending', tier,
-        firstName, lastName, email || user.email, phone, paymentMethod, 0]
+      [orderId, user.uid, parsedEventId, event.title ?? null, event.date ?? null, event.time ?? null, event.location ?? null,
+        event.venue ?? null, event.image ?? null, parsedQuantity, unitPrice, totalAmount, 'pending', tier ?? 'Standard',
+        firstName ?? null, lastName ?? null, email || user.email || `${user.uid}@unknown.local`, phone ?? null, paymentMethod ?? null, 0]
     );
 
     await conn.execute(
@@ -104,7 +118,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ id: orderId, paymentStatus: 'PENDING' }, { status: 201 });
   } catch (err) {
     await conn.rollback();
-    throw err;
+    console.error('API /api/orders POST Error:', err);
+    return NextResponse.json({ error: 'Unable to create order. Please try again.' }, { status: 500 });
   } finally {
     conn.release();
   }

@@ -84,6 +84,7 @@ export async function POST(req: NextRequest) {
       image,
       busTransport,
       seatingChart,
+      ticketTypes,
     } = body;
 
     if (!title || !date || !time || !location || !venue) {
@@ -94,8 +95,8 @@ export async function POST(req: NextRequest) {
       `INSERT INTO event_submissions (
         title, description, fullDescription, category, date, time, location, venue,
         image, price, ticketsTotal, organizerId, busTransport, seatingChart,
-        status, ticketDetailsSubmitted
-      ) VALUES (?,?,?,?,?,?,?,?,?, NULL, NULL, ?,?,?, 'pending', 0)`,
+        status, ticketDetailsSubmitted, ticketTypes
+      ) VALUES (?,?,?,?,?,?,?,?,?, NULL, NULL, ?,?,?, 'pending', 0, ?)`,
       [
         title,
         description || null,
@@ -109,6 +110,7 @@ export async function POST(req: NextRequest) {
         user.uid,
         busTransport ? 1 : 0,
         seatingChart ? 1 : 0,
+        JSON.stringify(Array.isArray(ticketTypes) ? ticketTypes : []),
       ]
     );
 
