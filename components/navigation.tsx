@@ -26,14 +26,14 @@ import { ModeToggle } from '@/components/mode-toggle';
 import { auth } from '@/lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { clearSessionExpiry } from '@/lib/auth-session';
-import { canOrganize, isAdmin } from '@/lib/roles';
+import { canOrganize, isAdmin, canAttend, UserRole } from '@/lib/roles';
 
 const NAV_LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/', label: 'Explore Events' },
   { href: '/my-bookings', label: 'My Tickets' },
   { href: '/marketplace', label: 'Marketplace' },
-  // { href: '/bus', label: 'Bus Tickets' },
+  { href: '/about', label: 'About' },
   { href: '/support', label: 'Help' },
   { href: '/organizer', label: 'Organizer' },
 ];
@@ -45,7 +45,7 @@ export default function Navigation() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [userRole, setUserRole] = useState<'customer' | 'organizer' | 'customer_organizer' | 'admin' | null>(null);
+  const [userRole, setUserRole] = useState<UserRole | 'operator' | null>(null);
   const [loading, setLoading] = useState(true);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -63,15 +63,15 @@ export default function Navigation() {
         const res = await fetch(`/api/users/${u.uid}`);
         if (res.ok) {
           const data = await res.json();
-          setUserRole(data.role ?? 'customer');
+          setUserRole(data.role ?? null);
         } else {
-          setUserRole('customer');
+          setUserRole(null);
         }
       } catch (err: any) {
         if (!err.code?.includes('unavailable') && !err.message?.includes('offline')) {
           console.error('Error fetching role:', err);
         }
-        setUserRole('customer');
+        setUserRole(null);
       } finally {
         setLoading(false);
       }
@@ -92,11 +92,33 @@ export default function Navigation() {
 
   if (pathname === '/auth' || pathname?.startsWith?.('/organizer') || pathname?.startsWith?.('/admin')) return null;
 
+  const getDashboardHref = () => {
+    if (isAdmin(userRole)) return '/admin';
+    if (userRole === 'organizer') return '/organizer/dashboard';
+    if (userRole === 'operator') return '/operator/dashboard';
+    return '/dashboard';
+  };
+
   const visibleNavLinks = NAV_LINKS.filter((link) => {
     if (link.href === '/organizer') {
       return userRole && canOrganize(userRole) && !isAdmin(userRole);
     }
+    // Only attendees have tickets
+    if (link.href === '/my-bookings') {
+      if (userRole === 'organizer' || isAdmin(userRole) || userRole === 'operator') {
+        return false;
+      }
+    }
     return true;
+  }).map((link) => {
+    if (link.href === '/dashboard') {
+      return {
+        ...link,
+        href: getDashboardHref(),
+        label: userRole === 'organizer' ? 'Organizer Hub' : isAdmin(userRole) ? 'Admin Hub' : 'Dashboard',
+      };
+    }
+    return link;
   });
 
   const handleSignOut = async () => {
@@ -150,7 +172,6 @@ export default function Navigation() {
 
           {/* ── Desktop right section ── */}
           <div className="hidden md:flex items-center gap-2">
-            <ModeToggle />
 
             {loading ? (
               <div className="w-8 h-8 rounded-full bg-muted animate-pulse" />
@@ -176,12 +197,16 @@ export default function Navigation() {
                     </div>
 
                     <div className="p-1.5 space-y-0.5">
-                      <DropdownLink href="/my-bookings" icon={<TicketIcon className="w-4 h-4" />} onClick={() => setDropdownOpen(false)}>
-                        My Tickets
-                      </DropdownLink>
-                      <DropdownLink href="/dashboard" icon={<LayoutDashboardIcon className="w-4 h-4" />} onClick={() => setDropdownOpen(false)}>
-                        {canOrganize(userRole) ? 'Attendee Hub' : 'Dashboard'}
-                      </DropdownLink>
+                      {canAttend(userRole) && (
+                        <DropdownLink href="/my-bookings" icon={<TicketIcon className="w-4 h-4" />} onClick={() => setDropdownOpen(false)}>
+                          My Tickets
+                        </DropdownLink>
+                      )}
+                      {canAttend(userRole) && (
+                        <DropdownLink href="/dashboard" icon={<LayoutDashboardIcon className="w-4 h-4" />} onClick={() => setDropdownOpen(false)}>
+                          {userRole === 'customer_organizer' ? 'Attendee Hub' : 'Dashboard'}
+                        </DropdownLink>
+                      )}
                       {isAdmin(userRole) && (
                         <DropdownLink href="/admin" icon={<LayoutDashboardIcon className="w-4 h-4" />} onClick={() => setDropdownOpen(false)}>
                           Admin Dashboard
@@ -190,6 +215,11 @@ export default function Navigation() {
                       {canOrganize(userRole) && !isAdmin(userRole) && (
                         <DropdownLink href="/organizer/dashboard" icon={<UserIcon className="w-4 h-4" />} onClick={() => setDropdownOpen(false)}>
                           Organizer Hub
+                        </DropdownLink>
+                      )}
+                      {userRole === 'operator' && (
+                        <DropdownLink href="/operator/dashboard" icon={<LayoutDashboardIcon className="w-4 h-4" />} onClick={() => setDropdownOpen(false)}>
+                          Operator Dashboard
                         </DropdownLink>
                       )}
                     </div>
@@ -225,7 +255,6 @@ export default function Navigation() {
 
           {/* ── Mobile hamburger ── */}
           <div className="flex md:hidden items-center gap-2">
-            <ModeToggle />
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-xl">
@@ -281,15 +310,22 @@ export default function Navigation() {
                         <div className="h-12 rounded-xl bg-muted animate-pulse" />
                       ) : user ? (
                         <div className="space-y-1">
-                          <MobileLink href="/my-bookings" icon={<TicketIcon className="w-4 h-4" />} onClick={() => setMobileOpen(false)}>My Tickets</MobileLink>
-                          <MobileLink href="/dashboard" icon={<LayoutDashboardIcon className="w-4 h-4" />} onClick={() => setMobileOpen(false)}>
-                            {canOrganize(userRole) ? 'Attendee Hub' : 'Dashboard'}
-                          </MobileLink>
+                          {canAttend(userRole) && (
+                            <MobileLink href="/my-bookings" icon={<TicketIcon className="w-4 h-4" />} onClick={() => setMobileOpen(false)}>My Tickets</MobileLink>
+                          )}
+                          {canAttend(userRole) && (
+                            <MobileLink href="/dashboard" icon={<LayoutDashboardIcon className="w-4 h-4" />} onClick={() => setMobileOpen(false)}>
+                              {userRole === 'customer_organizer' ? 'Attendee Hub' : 'Dashboard'}
+                            </MobileLink>
+                          )}
                           {isAdmin(userRole) && (
                             <MobileLink href="/admin" icon={<LayoutDashboardIcon className="w-4 h-4" />} onClick={() => setMobileOpen(false)}>Admin Dashboard</MobileLink>
                           )}
                           {canOrganize(userRole) && !isAdmin(userRole) && (
                             <MobileLink href="/organizer/dashboard" icon={<UserIcon className="w-4 h-4" />} onClick={() => setMobileOpen(false)}>Organizer Hub</MobileLink>
+                          )}
+                          {userRole === 'operator' && (
+                            <MobileLink href="/operator/dashboard" icon={<LayoutDashboardIcon className="w-4 h-4" />} onClick={() => setMobileOpen(false)}>Operator Dashboard</MobileLink>
                           )}
                           <button
                             onClick={() => { handleSignOut(); setMobileOpen(false); }}

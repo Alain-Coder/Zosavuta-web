@@ -55,7 +55,7 @@ export default function SupportPage() {
             Contact <span className="text-primary italic">Support</span>
           </h1>
           <p className="text-lg text-white/70 max-w-xl mx-auto font-medium">
-            Have a question about event tickets, bus transport, or selling tickets on Zosavuta? Our support team in Malawi is ready to help.
+            Have a question about event tickets or selling tickets on Zosavuta? Our support team is ready to help.
           </p>
         </div>
       </section>
@@ -241,16 +241,16 @@ export default function SupportPage() {
 const FAQ_ITEMS = [
   {
     question: 'How do I access my tickets after buying?',
-    answer: 'Tickets bought on Zosavuta are issued immediately to your email and accessible inside your user account on dashboard.zosavuta.com.',
+    answer: 'Tickets bought on Zosavuta are issued immediately to your email and accessible inside your user account.',
   },
   {
     question: 'Are ticket sales refundable?',
     answer: 'Ticket sales are final. If you can no longer attend an event, you can list your ticket on our official fan-to-fan Marketplace.',
   },
-  {
-    question: 'How does bus transport ticketing work?',
-    answer: 'If your event or bus route offers bus transport, your ticket QR includes seat reservation and boarding instructions.',
-  },
+  // {
+  //   question: 'How does bus transport ticketing work?',
+  //   answer: 'If your event or bus route offers bus transport, your ticket QR includes seat reservation and boarding instructions.',
+  // },
   {
     question: 'What payment options are supported?',
     answer: 'We support local mobile money (Airtel Money, Mpamba) as well as Visa and Mastercard via PayChangu.',

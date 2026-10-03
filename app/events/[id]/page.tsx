@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MapPinIcon, CalendarIcon, ShieldCheckIcon, UsersIcon, ChevronLeftIcon, TagIcon, ArrowRightIcon, TrendingDownIcon } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { MapPinIcon, CalendarIcon, ShieldCheckIcon, UsersIcon, ChevronLeftIcon, TagIcon, ArrowRightIcon, TrendingDownIcon, ZoomInIcon, ZoomOutIcon, RotateCcwIcon } from 'lucide-react';
 import { Event } from '@/lib/db';
 
 export default function EventDetailPage() {
@@ -23,6 +24,12 @@ export default function EventDetailPage() {
   const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
   const [tier, setTier] = useState('Standard');
   const [resale, setResale] = useState<{ id: string; price: number; sellerId: string } | null>(null);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [zoomScale, setZoomScale] = useState(1);
+
+  const zoomIn = () => setZoomScale((prev) => Math.min(prev + 0.25, 3));
+  const zoomOut = () => setZoomScale((prev) => Math.max(prev - 0.25, 0.75));
+  const resetZoom = () => setZoomScale(1);
 
   useEffect(() => {
     const fetchEvent = async () => {
@@ -101,8 +108,13 @@ export default function EventDetailPage() {
     return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   };
 
-  const ticketTypes = event.ticketTypes?.length ? event.ticketTypes : [{ name: 'Standard', price: event.price }];
-  const selectedTicketType = ticketTypes.find((item) => item.name === tier) || ticketTypes[0];
+  // Only show organizer-configured ticket types — no auto-calculation for missing tiers
+  const ticketTypes = event.ticketTypes?.length
+    ? event.ticketTypes
+    : [{ name: 'Standard', price: Number(event.price || 0) || 3500 }];
+
+  const selectedTicketType =
+    ticketTypes.find((item) => item.name.toLowerCase() === tier.toLowerCase()) || ticketTypes[0];
   const unitPrice = Number(selectedTicketType.price);
   const totalPrice = unitPrice * quantity;
 
@@ -121,13 +133,26 @@ export default function EventDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2">
-            {/* Event Image */}
-            <div className="mb-8 rounded-lg overflow-hidden h-96 bg-muted">
+            {/* Event Image with Zoom Preview */}
+            <div
+              className="mb-8 rounded-2xl overflow-hidden h-96 bg-muted relative group cursor-pointer shadow-md border border-border/50"
+              onClick={() => {
+                setZoomScale(1);
+                setIsLightboxOpen(true);
+              }}
+              title="Click to enlarge image"
+            >
               <img
                 src={event.image}
                 alt={event.title}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <div className="bg-black/60 backdrop-blur-md text-white rounded-full p-3.5 shadow-2xl border border-white/20 transform scale-90 group-hover:scale-100 transition-all flex items-center gap-2 px-4">
+                  <ZoomInIcon className="w-5 h-5" />
+                  <span className="text-xs font-bold uppercase tracking-wider">Click to Zoom</span>
+                </div>
+              </div>
             </div>
 
             {/* Event Info */}
@@ -209,7 +234,20 @@ export default function EventDetailPage() {
               <div className="mb-6">
                 <Label className="text-sm font-medium mb-2 block">Ticket Tier</Label>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {ticketTypes.map((type) => <button key={type.name} type="button" onClick={() => setTier(type.name)} className={`p-3 rounded-xl border text-left transition ${tier === type.name ? 'border-primary bg-primary/10 font-bold text-primary' : 'border-border hover:bg-muted text-muted-foreground'}`}><div className="text-xs font-bold uppercase tracking-wider">{type.name}</div><div className="text-sm font-extrabold">MWK {Number(type.price).toLocaleString()}</div></button>)}
+                  {ticketTypes.map((type) => (
+                    <button
+                      key={type.name}
+                      type="button"
+                      onClick={() => setTier(type.name)}
+                      className={`p-3 rounded-xl border text-left transition cursor-pointer ${tier.toLowerCase() === type.name.toLowerCase()
+                          ? 'border-primary bg-primary/10 font-bold text-primary ring-2 ring-primary/20 shadow-sm'
+                          : 'border-border hover:bg-muted text-muted-foreground'
+                        }`}
+                    >
+                      <div className="text-xs font-bold uppercase tracking-wider">{type.name}</div>
+                      <div className="text-sm font-extrabold">MWK {Number(type.price).toLocaleString()}</div>
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -300,6 +338,84 @@ export default function EventDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Event Image Zoom Lightbox Modal */}
+      <Dialog
+        open={isLightboxOpen}
+        onOpenChange={(open) => {
+          setIsLightboxOpen(open);
+          if (!open) setZoomScale(1);
+        }}
+      >
+        <DialogContent className="max-w-4xl p-0 overflow-hidden rounded-2xl bg-zinc-950 border-zinc-800 text-white shadow-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>{event.title} - Cover Preview</DialogTitle>
+          </DialogHeader>
+
+          {/* Controls */}
+          <div className="flex items-center justify-between px-4 py-3 bg-zinc-900/90 border-b border-zinc-800 backdrop-blur-md z-10">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-zinc-300 uppercase tracking-wider truncate max-w-[200px] sm:max-w-xs">
+                {event.title}
+              </span>
+              <span className="text-xs text-zinc-500 font-mono">
+                ({Math.round(zoomScale * 100)}%)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={zoomOut}
+                disabled={zoomScale <= 0.75}
+                className="h-8 px-2 text-zinc-300 hover:text-white hover:bg-zinc-800 cursor-pointer"
+                title="Zoom Out"
+              >
+                <ZoomOutIcon className="w-4 h-4" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={resetZoom}
+                disabled={zoomScale === 1}
+                className="h-8 px-2 text-zinc-300 hover:text-white hover:bg-zinc-800 cursor-pointer text-xs font-semibold"
+                title="Reset Zoom"
+              >
+                <RotateCcwIcon className="w-3.5 h-3.5 mr-1" />
+                Reset
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={zoomIn}
+                disabled={zoomScale >= 3}
+                className="h-8 px-2 text-zinc-300 hover:text-white hover:bg-zinc-800 cursor-pointer"
+                title="Zoom In"
+              >
+                <ZoomInIcon className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Image */}
+          <div className="relative overflow-auto max-h-[75vh] min-h-[300px] flex items-center justify-center p-4 bg-black select-none">
+            <img
+              src={event.image}
+              alt={event.title}
+              style={{
+                transform: `scale(${zoomScale})`,
+                transition: 'transform 0.2s ease-out',
+                transformOrigin: 'center center',
+              }}
+              className="max-h-[70vh] w-auto object-contain rounded-lg shadow-2xl"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

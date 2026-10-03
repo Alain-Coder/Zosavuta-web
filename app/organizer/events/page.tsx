@@ -49,7 +49,12 @@ interface EventItem {
   price: number;
   ticketsTotal: number;
   ticketsAvailable: number;
-  status: 'active' | 'draft' | 'sold_out' | 'cancelled';
+  status: 'active' | 'draft' | 'sold_out' | 'cancelled' | 'expired';
+  physicalAllocated?: number;
+  physicalSold?: number;
+  physicalUsed?: number;
+  actualTicketsSold?: number;
+  actualRevenue?: number;
 }
 
 interface SubmissionItem {
@@ -188,11 +193,33 @@ export default function OrganizerEventsPage() {
     );
   }
 
-  const activeEventsCount = events.filter((e) => e.status === 'active').length;
   const now = new Date();
-  const isEnded = (event: EventItem) => event.status === 'cancelled' || new Date(`${event.date}T${event.time || '23:59'}:00`) < now;
+  const isEnded = (event: EventItem) => {
+    // Explicitly ended statuses
+    if (event.status === 'expired' || event.status === 'cancelled' || event.status === 'sold_out') return true;
+
+    // For active events, also check client-side if date has passed
+    if (event.status === 'active') {
+      try {
+        const eventDate = new Date(event.date);
+        if (event.time) {
+          const [hours, minutes] = event.time.split(':').map(Number);
+          eventDate.setHours(hours || 23, minutes || 59, 0, 0);
+        } else {
+          eventDate.setHours(23, 59, 59, 999);
+        }
+        return eventDate < now;
+      } catch (error) {
+        console.error(`Error parsing date for event ${event.id}:`, error);
+        return false;
+      }
+    }
+
+    return false;
+  };
   const currentEvents = events.filter((event) => event.status === 'active' && !isEnded(event));
   const endedEvents = events.filter(isEnded);
+  const activeEventsCount = events.filter((e) => e.status === 'active' && !isEnded(e)).length;
   const pendingSubmissionsCount = submissions.filter((s) => s.status === 'pending').length;
 
   const filteredOrders = eventOrders.filter((order) => {
@@ -281,7 +308,8 @@ export default function OrganizerEventsPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {currentEvents.map((event) => {
-                const sold = event.ticketsTotal - event.ticketsAvailable;
+                const allocated = Number(event.physicalAllocated || 0);
+                const sold = Number(event.actualTicketsSold ?? Math.max(0, (event.ticketsTotal - event.ticketsAvailable) - allocated));
                 const percentSold = event.ticketsTotal > 0 ? Math.round((sold / event.ticketsTotal) * 100) : 0;
                 const eventImgUrl = event.image && event.image.trim() !== '' ? event.image : '/images/hero-bg.jpg';
 
@@ -340,7 +368,10 @@ export default function OrganizerEventsPage() {
                             <span className="text-muted-foreground flex items-center gap-1">
                               <TicketIcon className="w-3.5 h-3.5 text-primary" /> Ticket Sales
                             </span>
-                            <span className="text-foreground">{sold} / {event.ticketsTotal} ({percentSold}%)</span>
+                            <span className="text-foreground">
+                              {sold} / {event.ticketsTotal} ({percentSold}%)
+                              {allocated > 0 && <span className="text-amber-600 font-normal ml-1">({allocated} allocated)</span>}
+                            </span>
                           </div>
                           <div className="w-full bg-muted h-2.5 rounded-full overflow-hidden">
                             <div className="bg-primary h-full transition-all duration-300" style={{ width: `${percentSold}%` }} />
@@ -355,21 +386,21 @@ export default function OrganizerEventsPage() {
                         <span className="text-lg font-black text-primary">MWK {Number(event.price).toLocaleString()}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                      <Link href={`/organizer/events/${event.id}/edit`} onClick={(e) => e.stopPropagation()}>
-                        <Button size="icon-sm" variant="outline" title="Edit event"><PencilIcon className="w-4 h-4" /></Button>
-                      </Link>
-                      <Button size="icon-sm" variant="outline" title="Delete or cancel event" onClick={(e) => { e.stopPropagation(); void handleDeleteEvent(event); }}><Trash2Icon className="w-4 h-4" /></Button>
-                      <Button
-                        size="sm"
-                        className="rounded-xl font-bold text-xs uppercase tracking-wider bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground gap-1.5 cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenEventDetails(event);
-                        }}
-                      >
-                        <EyeIcon className="w-4 h-4" />
-                        View Ticket Details →
-                      </Button>
+                        <Link href={`/organizer/events/${event.id}/edit`} onClick={(e) => e.stopPropagation()}>
+                          <Button size="icon-sm" variant="outline" title="Edit event"><PencilIcon className="w-4 h-4" /></Button>
+                        </Link>
+                        <Button size="icon-sm" variant="outline" title="Delete or cancel event" onClick={(e) => { e.stopPropagation(); void handleDeleteEvent(event); }}><Trash2Icon className="w-4 h-4" /></Button>
+                        <Button
+                          size="sm"
+                          className="rounded-xl font-bold text-xs uppercase tracking-wider bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground gap-1.5 cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenEventDetails(event);
+                          }}
+                        >
+                          <EyeIcon className="w-4 h-4" />
+                          View Ticket Details →
+                        </Button>
                       </div>
                       <Link href={`/organizer/physical-tickets?eventId=${event.id}`} onClick={(e) => e.stopPropagation()}>
                         <Button size="sm" variant="outline" className="rounded-xl font-bold text-xs gap-1.5 cursor-pointer">
@@ -393,12 +424,60 @@ export default function OrganizerEventsPage() {
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {endedEvents.map((event) => (
-                <Card key={event.id} className="overflow-hidden border border-border bg-card">
-                  <div className="relative h-40 bg-muted"><img src={event.image || '/images/hero-bg.jpg'} alt={event.title} className="h-full w-full object-cover" /><Badge className="absolute right-3 top-3 bg-slate-800 text-white">{event.status === 'cancelled' ? 'CANCELLED' : 'COMPLETED'}</Badge></div>
-                  <div className="p-5"><h3 className="text-xl font-black">{event.title}</h3><p className="mt-2 text-sm text-muted-foreground">{event.date} at {event.time}</p><p className="text-sm text-muted-foreground">{event.venue}, {event.location}</p><div className="mt-4 flex gap-2"><Button size="sm" variant="outline" onClick={() => handleOpenEventDetails(event)}><EyeIcon className="w-4 h-4" /> View history</Button><Link href={`/organizer/events/${event.id}/edit`}><Button size="sm" variant="outline"><PencilIcon className="w-4 h-4" /> Edit</Button></Link></div></div>
-                </Card>
-              ))}
+              {endedEvents.map((event) => {
+                const endedImgUrl = event.image && event.image.trim() !== '' ? event.image : '/images/hero-bg.jpg';
+                const badgeLabel =
+                  event.status === 'cancelled' ? 'CANCELLED' :
+                    event.status === 'expired' ? 'EXPIRED' :
+                      event.status === 'sold_out' ? 'SOLD OUT' :
+                        'COMPLETED';
+                const badgeClass =
+                  event.status === 'cancelled' ? 'bg-red-700 text-white font-bold' :
+                    event.status === 'expired' ? 'bg-slate-600 text-white font-bold' :
+                      event.status === 'sold_out' ? 'bg-amber-600 text-white font-bold' :
+                        'bg-green-700 text-white font-bold';
+                const sold = Number(event.actualTicketsSold ?? Math.max(0, event.ticketsTotal - event.ticketsAvailable));
+                return (
+                  <Card key={event.id} className="overflow-hidden border border-border bg-card flex flex-col justify-between opacity-90 hover:opacity-100 transition-opacity">
+                    <div className="relative h-44 bg-muted overflow-hidden">
+                      <img
+                        src={endedImgUrl}
+                        alt={event.title}
+                        className="h-full w-full object-cover grayscale-[40%]"
+                        onError={(e) => { (e.target as HTMLImageElement).src = '/images/hero-bg.jpg'; }}
+                      />
+                      <div className="absolute inset-0 bg-black/30" />
+                      <Badge className={`absolute right-3 top-3 ${badgeClass}`}>{badgeLabel}</Badge>
+                      <div className="absolute bottom-3 left-3">
+                        <p className="text-white font-black text-lg leading-tight drop-shadow">{event.title}</p>
+                        <p className="text-white/70 text-xs mt-0.5">{event.date} at {event.time}</p>
+                      </div>
+                    </div>
+                    <div className="p-5 space-y-3">
+                      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1 font-medium">
+                          <MapPinIcon className="w-4 h-4 text-primary" />
+                          {event.venue}, {event.location}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs font-bold text-muted-foreground">
+                        <span className="flex items-center gap-1"><TicketIcon className="w-3.5 h-3.5 text-primary" /> {sold} / {event.ticketsTotal} tickets sold</span>
+                        <span className="text-primary">MWK {Number(event.price).toLocaleString()}</span>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <Button size="sm" variant="outline" className="rounded-xl font-bold text-xs gap-1.5" onClick={() => handleOpenEventDetails(event)}>
+                          <EyeIcon className="w-4 h-4" /> View History
+                        </Button>
+                        <Link href={`/organizer/events/${event.id}/edit`}>
+                          <Button size="sm" variant="outline" className="rounded-xl font-bold text-xs gap-1.5">
+                            <PencilIcon className="w-4 h-4" /> Edit
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </TabsContent>
@@ -461,9 +540,16 @@ export default function OrganizerEventsPage() {
       {/* EVENT & TICKET DETAILS MODAL */}
       <Dialog open={!!selectedEvent} onOpenChange={(open) => !open && setSelectedEvent(null)}>
         {selectedEvent && (
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 rounded-2xl border-border bg-card">
+          <DialogContent
+            className="!max-w-5xl w-[95vw] sm:w-[90vw] max-h-[92vh] overflow-y-auto overflow-x-hidden p-0 rounded-2xl border-border bg-card custom-scrollbar"
+          >
+            {/* Accessible hidden title */}
+            <DialogTitle className="sr-only">
+              Event Details: {selectedEvent.title}
+            </DialogTitle>
+
             {/* Modal Cover Image & Header */}
-            <div className="relative h-56 w-full bg-muted">
+            <div className="relative h-56 sm:h-64 w-full bg-muted">
               <img
                 src={selectedEvent.image && selectedEvent.image.trim() !== '' ? selectedEvent.image : '/images/hero-bg.jpg'}
                 alt={selectedEvent.title}
@@ -472,19 +558,21 @@ export default function OrganizerEventsPage() {
                   (e.target as HTMLImageElement).src = '/images/hero-bg.jpg';
                 }}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent flex flex-col justify-end p-6">
-                <div className="flex items-center justify-between">
-                  <div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent flex flex-col justify-end p-6 sm:p-8">
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                  <div className="min-w-0">
                     <Badge className="bg-primary text-primary-foreground font-bold text-xs uppercase mb-2">
                       {selectedEvent.category || 'Event'}
                     </Badge>
-                    <h2 className="text-2xl sm:text-3xl font-black text-white">{selectedEvent.title}</h2>
-                    <p className="text-xs text-white/80 mt-1 flex items-center gap-3">
+                    <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white break-words">
+                      {selectedEvent.title}
+                    </h2>
+                    <p className="text-xs sm:text-sm text-white/80 mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
                       <span>📅 {selectedEvent.date} at {selectedEvent.time}</span>
                       <span>📍 {selectedEvent.venue}, {selectedEvent.location}</span>
                     </p>
                   </div>
-                  <Link href={`/events/${selectedEvent.id}`} target="_blank">
+                  <Link href={`/events/${selectedEvent.id}`} target="_blank" className="shrink-0">
                     <Button size="sm" variant="secondary" className="rounded-xl font-bold text-xs gap-1.5">
                       <ExternalLinkIcon className="w-3.5 h-3.5" />
                       Event Page
@@ -494,9 +582,9 @@ export default function OrganizerEventsPage() {
               </div>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-6 sm:p-8 space-y-6">
               {/* Event Performance Stat Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card className="p-4 bg-muted/40 border border-border">
                   <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">Ticket Price</span>
                   <span className="text-xl font-black text-primary mt-1 block">
@@ -511,28 +599,28 @@ export default function OrganizerEventsPage() {
                 </Card>
                 <Card className="p-4 bg-muted/40 border border-border">
                   <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">Tickets Sold</span>
-                  <span className="text-xl font-black text-green-600 mt-1 block">
-                    {selectedEvent.ticketsTotal - selectedEvent.ticketsAvailable} Sold
+                   <span className="text-xl font-black text-green-600 mt-1 block">
+                    {(selectedEvent.actualTicketsSold ?? (selectedEvent.ticketsTotal - selectedEvent.ticketsAvailable)).toLocaleString()} Sold
                   </span>
                 </Card>
                 <Card className="p-4 bg-muted/40 border border-border">
                   <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">Gross Revenue</span>
-                  <span className="text-xl font-black text-primary mt-1 block">
-                    MWK {((selectedEvent.ticketsTotal - selectedEvent.ticketsAvailable) * selectedEvent.price).toLocaleString()}
+                   <span className="text-xl font-black text-primary mt-1 block">
+                    MWK {Number(selectedEvent.actualRevenue ?? ((selectedEvent.ticketsTotal - selectedEvent.ticketsAvailable) * selectedEvent.price)).toLocaleString()}
                   </span>
                 </Card>
               </div>
 
               {/* Event Purchased Tickets Table */}
               <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-border">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-border">
                   <div>
                     <h3 className="text-lg font-bold text-foreground">Purchased Tickets & Attendees</h3>
                     <p className="text-xs text-muted-foreground">
                       List of all ticket purchases for {selectedEvent.title}
                     </p>
                   </div>
-                  <div className="relative w-full sm:w-64">
+                  <div className="relative w-full sm:w-72">
                     <SearchIcon className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
                     <Input
                       placeholder="Search buyer or ticket #..."
@@ -557,8 +645,8 @@ export default function OrganizerEventsPage() {
                     </p>
                   </Card>
                 ) : (
-                  <div className="border border-border rounded-xl overflow-x-auto">
-                    <table className="w-full text-left text-xs">
+                  <div className="border border-border rounded-xl overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left text-xs min-w-[720px]">
                       <thead className="bg-muted text-muted-foreground uppercase font-bold tracking-wider">
                         <tr>
                           <th className="px-4 py-3">Attendee</th>

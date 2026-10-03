@@ -20,14 +20,40 @@ export async function GET(req: NextRequest) {
 
   const rows = await query(sql, params);
 
-  // Attach ticket numbers and tokens to each order
+  // Attach ticket details, numbers and tokens to each order
   for (const order of rows) {
-    const tickets = await query('SELECT ticketNumber, verificationToken FROM order_tickets WHERE orderId = ?', [order.id]);
+    const tickets = await query<any>(
+      `SELECT t.id, t.ticketNumber, t.verificationToken, t.currentOwnerId, t.status, t.listedForResale,
+              r.id AS resaleListingId, r.price AS resalePrice, r.status AS resaleStatus
+       FROM order_tickets t
+       LEFT JOIN resale_listings r ON r.ticketId = t.id AND r.status IN ('ACTIVE', 'RESERVED')
+       WHERE t.orderId = ?
+       ORDER BY t.id ASC`,
+      [order.id]
+    );
+
+    (order as any).tickets = tickets.map((t: any) => ({
+      id: Number(t.id),
+      ticketNumber: String(t.ticketNumber),
+      verificationToken: String(t.verificationToken),
+      currentOwnerId: t.currentOwnerId ? String(t.currentOwnerId) : null,
+      status: String(t.status),
+      listedForResale: Boolean(Number(t.listedForResale) === 1 || t.resaleListingId),
+      resalePrice: t.resalePrice ? Number(t.resalePrice) : null,
+      resaleListingId: t.resaleListingId ? String(t.resaleListingId) : null,
+      resaleStatus: t.resaleStatus ? String(t.resaleStatus) : null,
+    }));
     (order as any).ticketNumbers = tickets.map((t: any) => t.ticketNumber);
     (order as any).ticketTokens = tickets.map((t: any) => t.verificationToken);
+    (order as any).isListed = tickets.some((t: any) => Number(t.listedForResale) === 1 || Boolean(t.resaleListingId));
+    (order as any).isResalePurchase = Boolean(
+      String(order.id).startsWith('ORD-RESALE-') ||
+      String(order.tier || '').startsWith('RSL-') ||
+      String(order.tier || '').startsWith('RESALE-')
+    );
+
     if (order.status === 'confirmed' && tickets.length > 0) {
-      const ticketStatuses = await query<{ status: string }>('SELECT status FROM order_tickets WHERE orderId = ?', [order.id]);
-      if (ticketStatuses.length > 0 && ticketStatuses.every((ticket) => ticket.status === 'USED')) {
+      if (tickets.every((ticket: any) => ticket.status === 'USED')) {
         (order as any).status = 'used';
       }
     }
@@ -84,13 +110,27 @@ export async function POST(req: NextRequest) {
     }
 
     let ticketTypes: Array<{ name: string; price: number }> = [];
-    try { ticketTypes = typeof event.ticketTypes === 'string' ? JSON.parse(String(event.ticketTypes)) : (event.ticketTypes as Array<{ name: string; price: number }> || []); } catch { ticketTypes = []; }
-    const selectedType = ticketTypes.find((item) => item.name.toLowerCase() === String(tier).toLowerCase());
-    if (ticketTypes.length && !selectedType) {
-      await conn.rollback();
-      return NextResponse.json({ error: 'Selected ticket type is not available' }, { status: 400 });
+    try {
+      ticketTypes =
+        typeof event.ticketTypes === 'string'
+          ? JSON.parse(String(event.ticketTypes))
+          : (event.ticketTypes as Array<{ name: string; price: number }> || []);
+    } catch {
+      ticketTypes = [];
     }
-    const unitPrice = selectedType ? Number(selectedType.price) : Number(event.price);
+
+    // Use only organizer-configured ticket types — no auto-calculation
+    if (!ticketTypes || ticketTypes.length === 0) {
+      // Fallback for legacy events without ticketTypes: use the event base price as Standard
+      ticketTypes = [{ name: 'Standard', price: Number(event.price || 0) || 3500 }];
+    }
+
+    const selectedType = ticketTypes.find((item) => item.name.toLowerCase() === String(tier).toLowerCase());
+    if (!selectedType) {
+      await conn.rollback();
+      return NextResponse.json({ error: `Selected ticket type "${tier}" is not available` }, { status: 400 });
+    }
+    const unitPrice = Number(selectedType.price);
     const totalAmount = unitPrice * parsedQuantity;
     const orderId = `ZOS-${randomUUID().replace(/-/g, '').slice(0, 20).toUpperCase()}`;
 
@@ -100,7 +140,7 @@ export async function POST(req: NextRequest) {
         email, phone, paymentMethod, busTransport)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [orderId, user.uid, parsedEventId, event.title ?? null, event.date ?? null, event.time ?? null, event.location ?? null,
-        event.venue ?? null, event.image ?? null, parsedQuantity, unitPrice, totalAmount, 'pending', tier ?? 'Standard',
+        event.venue ?? null, event.image ?? null, parsedQuantity, unitPrice, totalAmount, 'pending', selectedType.name,
         firstName ?? null, lastName ?? null, email || user.email || `${user.uid}@unknown.local`, phone ?? null, paymentMethod ?? null, 0]
     );
 

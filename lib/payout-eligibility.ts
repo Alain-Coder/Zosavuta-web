@@ -16,14 +16,20 @@ export async function releaseEligiblePendingBalances(): Promise<number> {
   try {
     await conn.beginTransaction();
 
-    // Find pending earnings where event ended more than 2 days ago (T+2 cooling-off period)
+    // 1. Mark past active events as completed
+    await conn.execute(
+      `UPDATE events SET status = 'completed' 
+       WHERE status = 'active' AND date < CURDATE()`
+    );
+
+    // 2. Find pending earnings where event ended or completed
     const [eligibleEntries] = await conn.execute(
       `SELECT l.id, l.sellerId, l.amount 
        FROM financial_ledger l
        JOIN events e ON l.eventId = e.id
        WHERE l.status = 'PENDING'
          AND l.transactionType IN ('PRIMARY_TICKET_SALE', 'SECONDARY_TICKET_SALE')
-         AND e.date <= DATE_SUB(CURDATE(), INTERVAL 2 DAY)
+         AND (e.date < CURDATE() OR e.status = 'completed')
        FOR UPDATE`
     );
 
@@ -32,11 +38,12 @@ export async function releaseEligiblePendingBalances(): Promise<number> {
     for (const entry of rows) {
       await conn.execute(`UPDATE financial_ledger SET status = 'COMPLETED' WHERE id = ?`, [entry.id]);
       await conn.execute(
-        `UPDATE seller_balances 
-         SET pendingBalance = GREATEST(0, pendingBalance - ?),
-             availableBalance = availableBalance + ?
-         WHERE sellerId = ?`,
-        [entry.amount, entry.amount, entry.sellerId]
+        `INSERT INTO seller_balances (sellerId, pendingBalance, availableBalance, paidOutBalance)
+         VALUES (?, 0, ?, 0)
+         ON DUPLICATE KEY UPDATE
+           pendingBalance = GREATEST(0, pendingBalance - ?),
+           availableBalance = availableBalance + ?`,
+        [entry.sellerId, entry.amount, entry.amount, entry.amount]
       );
       releasedCount += 1;
     }
@@ -98,7 +105,7 @@ export async function getPayoutEligibility(sellerId: string): Promise<PayoutElig
     };
   }
 
-  const MIN_PAYOUT_AMOUNT = 1000; // MWK 1,000 minimum
+  const MIN_PAYOUT_AMOUNT = 2000;
   if (availableBalance < MIN_PAYOUT_AMOUNT) {
     return {
       eligible: false,
@@ -107,7 +114,7 @@ export async function getPayoutEligibility(sellerId: string): Promise<PayoutElig
       paidOutBalance,
       currency: balance.currency || 'MWK',
       isBlocked: false,
-      reason: `Available balance (MWK ${availableBalance.toLocaleString()}) is below minimum payout threshold of MWK ${MIN_PAYOUT_AMOUNT.toLocaleString()}. Funds are held during the T+2 event cooling-off period.`,
+      reason: `Available balance (MWK ${availableBalance.toLocaleString()}) is below minimum payout threshold of MWK ${MIN_PAYOUT_AMOUNT.toLocaleString()}.`,
     };
   }
 

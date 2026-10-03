@@ -154,7 +154,7 @@ function CheckoutContent() {
     );
   }
 
-  const configuredType = event.ticketTypes?.find((type) => type.name === tier);
+  const configuredType = event.ticketTypes?.find((type) => type.name.toLowerCase() === tier.toLowerCase());
   const unitPrice = configuredType ? Number(configuredType.price) : Number(event.price);
   const total = unitPrice * quantity;
 

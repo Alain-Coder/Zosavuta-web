@@ -36,31 +36,44 @@ export async function completeVerifiedPayment(paymentId: string, orderId: string
 
     // Check if this order is a Secondary Resale purchase
     const [resaleRows] = await conn.execute(
-      'SELECT id, ticketId, sellerId, price FROM resale_listings WHERE (reservedBy = ? OR id = ?) AND status IN (\'ACTIVE\', \'RESERVED\') LIMIT 1 FOR UPDATE',
-      [order.userId, order.tier]
+      'SELECT id, ticketId, orderId, sellerId, price FROM resale_listings WHERE (id = ? OR reservedBy = ?) AND status IN (\'ACTIVE\', \'RESERVED\') LIMIT 1 FOR UPDATE',
+      [order.tier, order.userId]
     );
-    const resaleListing = (resaleRows as { id: string; ticketId: number; sellerId: string; price: number }[])[0];
+    const resaleListing = (resaleRows as { id: string; ticketId: number | null; orderId: string; sellerId: string; price: number }[])[0];
 
-    if (resaleListing) {
+    if (resaleListing && (order.tier === resaleListing.id || order.id.startsWith('ORD-RESALE-'))) {
       // ─── SECONDARY RESALE FINALIZATION ───
       await conn.execute(
         `UPDATE resale_listings SET status = 'SOLD', soldAt = NOW() WHERE id = ?`,
         [resaleListing.id]
       );
 
-      await conn.execute(
-        `UPDATE order_tickets SET currentOwnerId = ?, listedForResale = 0 WHERE id = ?`,
-        [order.userId, resaleListing.ticketId]
-      );
+      let targetTicketId = resaleListing.ticketId;
+      if (!targetTicketId) {
+        const [candidateRows] = await conn.execute(
+          'SELECT id FROM order_tickets WHERE orderId = ? LIMIT 1',
+          [resaleListing.orderId]
+        );
+        targetTicketId = (candidateRows as any[])[0]?.id;
+      }
 
-      await recordTicketOwnershipHistory(
-        resaleListing.ticketId,
-        resaleListing.sellerId,
-        order.userId,
-        orderId,
-        resaleListing.id,
-        conn
-      );
+      if (targetTicketId) {
+        // Issue fresh cryptographically secure verification token to new buyer, invalidating old seller's QR
+        const newVerificationToken = randomBytes(32).toString('hex');
+        await conn.execute(
+          `UPDATE order_tickets SET currentOwnerId = ?, orderId = ?, listedForResale = 0, verificationToken = ? WHERE id = ?`,
+          [order.userId, orderId, newVerificationToken, targetTicketId]
+        );
+
+        await recordTicketOwnershipHistory(
+          targetTicketId,
+          resaleListing.sellerId,
+          order.userId,
+          orderId,
+          resaleListing.id,
+          conn
+        );
+      }
 
       const feeBreakdown = await calculateResaleFees(resaleListing.price);
 

@@ -18,10 +18,15 @@ interface Event {
   id: string;
   title: string;
   date: string;
+  time?: string;
   ticketsTotal: number;
   ticketsAvailable: number;
   price: number;
   status: string;
+  venue?: string;
+  location?: string;
+  actualTicketsSold?: number;
+  actualRevenue?: number;
 }
 
 interface Submission {
@@ -53,6 +58,21 @@ export default function OrganizerDashboard() {
     pendingSubmissions: 0,
   });
 
+  const recentActiveEvents = events
+    .filter((e) => e.status === 'active')
+    .sort((a, b) =>
+      new Date(`${b.date} ${b.time || '00:00'}`).getTime() -
+      new Date(`${a.date} ${a.time || '00:00'}`).getTime()
+    )
+    .slice(0, 4);
+
+  const recentSubmissions = [...submissions]
+    .filter((s) => s.status === 'pending' || s.status === 'approved' || s.status === 'rejected')
+    .sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+    .slice(0, 4);
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/auth?redirect=/organizer/dashboard');
@@ -79,8 +99,9 @@ export default function OrganizerDashboard() {
         }
 
         const headers = await getAuthHeaders();
+
         const [eventsRes, submissionsRes] = await Promise.all([
-          fetch(`/api/events?organizerId=${user.uid}&status=all`),
+          fetch('/api/organizer/events', { headers }),
           fetch('/api/event-submissions', { headers }),
         ]);
 
@@ -94,13 +115,13 @@ export default function OrganizerDashboard() {
           ? rawSubmissions
           : rawSubmissions?.submissions || rawSubmissions?.data || [];
 
+        // Calculate stats using accurate sold counts (excludes ALLOCATED physical tickets)
         let totalRevenue = 0;
         let totalTickets = 0;
 
         for (const event of eventsData) {
-          const ticketsSold = event.ticketsTotal - event.ticketsAvailable;
-          totalRevenue += ticketsSold * Number(event.price);
-          totalTickets += ticketsSold;
+          totalRevenue += Number(event.actualRevenue ?? ((event.ticketsTotal - event.ticketsAvailable) * Number(event.price)));
+          totalTickets += Number(event.actualTicketsSold ?? Math.max(0, event.ticketsTotal - event.ticketsAvailable));
         }
 
         setEvents(eventsData);
@@ -151,6 +172,7 @@ export default function OrganizerDashboard() {
             </Button>
           </Link>
         </div>
+
         {stats.pendingSubmissions > 0 && (
           <Card className="p-4 bg-amber-50 border-amber-200 mb-8 flex gap-4">
             <ClockIcon className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -176,20 +198,23 @@ export default function OrganizerDashboard() {
 
         <Tabs defaultValue="events" className="w-full">
           <TabsList>
-            <TabsTrigger value="events">Published Events ({events.length})</TabsTrigger>
+            <TabsTrigger value="events">
+              Published Events ({recentActiveEvents.length})
+            </TabsTrigger>
             <TabsTrigger value="submissions">
-              Submissions ({submissions.length})
+              Submissions ({recentSubmissions.length})
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="events" className="mt-6">
-            <EventsTable events={events} />
+            <EventsTable events={recentActiveEvents} />
           </TabsContent>
 
           <TabsContent value="submissions" className="mt-6">
-            <SubmissionsTable submissions={submissions} />
+            <SubmissionsTable submissions={recentSubmissions} />
           </TabsContent>
         </Tabs>
+
         {/* Charts Section */}
         <ChartsSection events={events} />
       </div>
@@ -244,7 +269,9 @@ function EventsTable({ events }: { events: Event[] }) {
               return (
                 <tr key={event.id} className="hover:bg-muted/50 transition">
                   <td className="px-6 py-4 font-medium">{event.title}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{event.date}</td>
+                  <td className="px-6 py-4 text-muted-foreground">
+                    {event.date} {event.time ? `at ${event.time}` : ''}
+                  </td>
                   <td className="px-6 py-4">{ticketsSold}/{event.ticketsTotal}</td>
                   <td className="px-6 py-4 font-semibold">MWK {revenue.toLocaleString()}</td>
                   <td className="px-6 py-4">
@@ -352,7 +379,6 @@ function ChartsSection({ events }: { events: Event[] }) {
   );
 }
 
-
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     active: 'bg-green-100 text-green-800',
@@ -362,11 +388,12 @@ function StatusBadge({ status }: { status: string }) {
     rejected: 'bg-red-100 text-red-800',
     sold_out: 'bg-purple-100 text-purple-800',
     cancelled: 'bg-gray-100 text-gray-600',
+    completed: 'bg-blue-100 text-blue-800',
   };
 
   return (
     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${styles[status] || 'bg-gray-100 text-gray-800'}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
     </span>
   );
 }

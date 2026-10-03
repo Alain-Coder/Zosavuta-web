@@ -16,6 +16,7 @@ import {
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
+  signOut,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { getPostAuthPath } from '@/lib/auth-redirect';
@@ -50,17 +51,26 @@ function AuthContent() {
     );
   };
 
-  const resolveUserRole = async (uid: string, fallback: UserRole): Promise<UserRole> => {
+  const fetchUserRoleStrict = async (uid: string): Promise<UserRole> => {
+    let res: Response;
     try {
-      const res = await fetch(`/api/users/${uid}`);
-      if (res.ok) {
-        const data = await res.json();
-        return (data.role as UserRole) ?? fallback;
-      }
+      res = await fetch(`/api/users/${uid}`);
     } catch {
-      // API unreachable — use fallback
+      throw new Error('Network error: Unable to connect to server. Please check your internet connection.');
     }
-    return fallback;
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new Error('Account role could not be verified. Please contact support.');
+      }
+      throw new Error(`Server error (${res.status}): Failed to retrieve your account permissions.`);
+    }
+
+    const data = await res.json();
+    if (!data?.role) {
+      throw new Error('No role is configured for this account. Please contact an administrator.');
+    }
+    return data.role as UserRole;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -85,13 +95,17 @@ function AuthContent() {
         await updateProfile(user, { displayName: fullName });
 
         try {
-          await fetch('/api/users', {
+          const res = await fetch('/api/users', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
             body: JSON.stringify({ uid: user.uid, fullName, email, role }),
           });
-        } catch {
-          console.warn('User sync to API failed, proceeding anyway.');
+          if (!res.ok) {
+            throw new Error('Failed to register account profile in database.');
+          }
+        } catch (dbErr: any) {
+          await signOut(auth);
+          throw new Error(dbErr?.message || 'Network error: Failed to save user account in the database. Please try again.');
         }
 
         setSessionExpiry(rememberMe);
@@ -100,9 +114,16 @@ function AuthContent() {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        setSessionExpiry(rememberMe);
-        const userRole = await resolveUserRole(user.uid, 'customer');
-        router.push(getPostAuthPath(userRole, redirectPath));
+        try {
+          const userRole = await fetchUserRoleStrict(user.uid);
+          setSessionExpiry(rememberMe);
+          router.push(getPostAuthPath(userRole, redirectPath));
+        } catch (roleErr: any) {
+          // If MySQL role wasn't available or network issues:
+          // Immediately sign out so user isn't left in half-authenticated state
+          await signOut(auth);
+          throw roleErr;
+        }
       }
     } catch (err: unknown) {
       setError(getFirebaseAuthErrorMessage(err));

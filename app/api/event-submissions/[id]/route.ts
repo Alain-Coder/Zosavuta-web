@@ -29,12 +29,27 @@ export async function GET(
       return NextResponse.json({ error: 'Submission not found' }, { status: 404 });
     }
 
-    const submission = rows[0] as { organizerId: string };
+    const submission = rows[0] as Record<string, any>;
     if (user.role !== 'admin' && submission.organizerId !== user.uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    return NextResponse.json(rows[0]);
+    // Only return organizer-configured ticket types — no auto-calculation for missing tiers
+    let parsedTicketTypes: Array<{ name: string; price: number }> = [];
+    if (typeof submission.ticketTypes === 'string') {
+      try {
+        parsedTicketTypes = JSON.parse(submission.ticketTypes);
+      } catch {
+        parsedTicketTypes = [];
+      }
+    } else if (Array.isArray(submission.ticketTypes)) {
+      parsedTicketTypes = submission.ticketTypes;
+    }
+
+    return NextResponse.json({
+      ...submission,
+      ticketTypes: parsedTicketTypes,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to fetch submission';
     return NextResponse.json({ error: message }, { status: 500 });
@@ -98,18 +113,32 @@ export async function PATCH(
       return NextResponse.json({ error: 'Number of tickets must be a positive integer' }, { status: 400 });
     }
 
+    // Process and guarantee Standard, VIP, and VVIP ticket types
+    let formattedTicketTypes: Array<{ name: string; price: number }> = [];
+    if (Array.isArray(ticketTypes) && ticketTypes.length > 0) {
+      formattedTicketTypes = ticketTypes
+        .filter((t: any) => t && t.name)
+        .map((t: any) => ({
+          name: String(t.name).trim(),
+          price: Math.max(0, Number(t.price) || 0),
+        }));
+    }
+
+    const finalStandardPrice = formattedTicketTypes.find((t) => t.name.toLowerCase() === 'standard')?.price ?? parsedPrice;
+
     await execute(
       `UPDATE event_submissions
        SET price = ?, ticketsTotal = ?, ticketDetailsSubmitted = 1,
            category = COALESCE(?, category), time = COALESCE(?, time), ticketTypes = ?
        WHERE id = ? AND status = 'pending'`,
-      [parsedPrice, parsedTickets, category || null, time || null, JSON.stringify(Array.isArray(ticketTypes) ? ticketTypes : []), submissionId]
+      [finalStandardPrice, parsedTickets, category || null, time || null, JSON.stringify(formattedTicketTypes), submissionId]
     );
 
     return NextResponse.json({
       id: submissionId,
       status: 'pending',
       ticketDetailsSubmitted: true,
+      ticketTypes: formattedTicketTypes,
       message: 'Ticket details saved. Awaiting admin approval before going live.',
     });
   } catch (err: unknown) {

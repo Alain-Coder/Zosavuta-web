@@ -13,9 +13,12 @@ interface ResaleListing {
   eventTitle: string;
   eventDate: string;
   eventImage?: string;
+  eventVenue?: string;
   orderPrice: number;
   price: number;
   sellerId: string;
+  ticketNumber?: string;
+  tier?: string;
 }
 
 export default function MarketplacePage() {
@@ -184,20 +187,31 @@ function ResaleCard({ resale }: { resale: any }) {
 
         {/* Ticket Body */}
         <div className="p-6 bg-card relative">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Seller</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Verified Seller</p>
           <div className="flex items-center gap-2 font-bold text-foreground mb-4">
             <ShieldCheckIcon className="w-4 h-4 text-green-600" />
-            {resale.sellerId}
+            <span className="text-sm truncate">{resale.sellerId?.slice(0, 10)}…</span>
           </div>
+
+          {resale.ticketNumber && (
+            <p className="text-[10px] font-mono text-muted-foreground mb-3">
+              Ticket: <span className="font-black">{resale.ticketNumber}</span>
+            </p>
+          )}
+          {resale.eventVenue && (
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-4">
+              📍 {resale.eventVenue}
+            </p>
+          )}
 
           <div className="bg-muted/50 p-4 rounded-xl border border-border/50">
             <div className="flex justify-between items-center mb-2">
               <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Original Price</span>
-              <span className="text-xs font-bold text-muted-foreground line-through decoration-orange-600 decoration-2 italic">MWK {resale.orderPrice.toLocaleString()}</span>
+              <span className="text-xs font-bold text-muted-foreground line-through decoration-orange-600 decoration-2 italic">MWK {resale.orderPrice?.toLocaleString()}</span>
             </div>
             <div className="flex justify-between items-end">
               <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Asking Price</span>
-              <span className="text-2xl font-black text-orange-600 tracking-tighter italic">MWK {resale.price.toLocaleString()}</span>
+              <span className="text-2xl font-black text-orange-600 tracking-tighter italic">MWK {resale.price?.toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -212,7 +226,7 @@ function ResaleCard({ resale }: { resale: any }) {
         {/* Bottom Stub: Action */}
         <div className="p-6 bg-muted/30 text-center">
           <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-4">
-            Ticket ID: {resale.id}
+            Listing ID: {resale.id}
           </p>
           <Link href={`/checkout/${resale.eventId}?resale=${resale.id}`}>
             <Button className="w-full bg-foreground text-background hover:bg-orange-600 hover:text-white transition-all duration-300 h-12 rounded-xl font-black uppercase tracking-widest text-xs group/btn shadow-lg">

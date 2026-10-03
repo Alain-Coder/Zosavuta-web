@@ -15,6 +15,8 @@ import {
   LogOutIcon,
   ArrowLeftRightIcon,
   ShieldCheckIcon,
+  MessageSquareIcon,
+  MailIcon,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -35,7 +37,7 @@ import { clearSessionExpiry } from '@/lib/auth-session';
 import { getAuthHeaders } from '@/lib/auth-client';
 import { Badge } from '@/components/ui/badge';
 
-export type AdminSection = 'overview' | 'approvals' | 'payouts' | 'reports' | 'refunds' | 'audit';
+export type AdminSection = 'overview' | 'approvals' | 'payouts' | 'reports' | 'refunds' | 'audit' | 'messages' | 'newsletter';
 
 interface NavItem {
   section?: AdminSection;
@@ -54,6 +56,8 @@ export function AdminSidebar() {
   const currentSection = (searchParams?.get('section') as AdminSection) || 'overview';
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [pendingPayouts, setPendingPayouts] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [subscriberCount, setSubscriberCount] = useState(0);
   const [adminEmail, setAdminEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -79,6 +83,20 @@ export function AdminSidebar() {
           const pList = Array.isArray(pData.payouts) ? pData.payouts : [];
           setPendingPayouts(pList.filter((p: any) => p.status === 'REQUESTED' || p.status === 'ACCOUNTANT_REVIEW').length);
         }
+
+        // Fetch unread contact messages
+        const messagesRes = await fetch(`/api/admin/contact-messages?adminId=${auth.currentUser.uid}&limit=1`, { headers });
+        if (messagesRes.ok) {
+          const mData = await messagesRes.json();
+          setUnreadMessages(mData.stats?.unread ?? 0);
+        }
+
+        // Fetch newsletter subscriber count
+        const newsletterRes = await fetch(`/api/newsletter?adminId=${auth.currentUser.uid}&limit=1`, { headers });
+        if (newsletterRes.ok) {
+          const nData = await newsletterRes.json();
+          setSubscriberCount(Number(nData.stats?.active ?? 0));
+        }
       } catch {
         // silently fallback
       }
@@ -96,6 +114,16 @@ export function AdminSidebar() {
   const isItemActive = (href: string, section?: AdminSection) => {
     if (href === '/admin/operators') {
       return pathname.startsWith('/admin/operators');
+    }
+    if (href === '/admin/contact-messages') {
+      return (
+        pathname.startsWith('/admin/contact-messages') ||
+        pathname.startsWith('/admin/messages') ||
+        (pathname === '/admin' && currentSection === 'messages')
+      );
+    }
+    if (href === '/admin?section=newsletter') {
+      return pathname === '/admin' && currentSection === 'newsletter';
     }
     if (pathname === '/admin') {
       return currentSection === section;
@@ -123,6 +151,22 @@ export function AdminSidebar() {
       label: 'Financial Payouts',
       icon: CreditCardIcon,
       badgeCount: pendingPayouts,
+    },
+  ];
+
+  const supportNav: NavItem[] = [
+    {
+      href: '/admin/contact-messages',
+      label: 'Contact Messages',
+      icon: MessageSquareIcon,
+      badgeCount: unreadMessages,
+    },
+    {
+      section: 'newsletter',
+      href: '/admin?section=newsletter',
+      label: 'Newsletter',
+      icon: MailIcon,
+      badgeCount: subscriberCount,
     },
   ];
 
@@ -193,6 +237,42 @@ export function AdminSidebar() {
                         </div>
                         {badgeCount !== undefined && badgeCount > 0 && (
                           <SidebarMenuBadge className="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full group-data-[collapsible=icon]:hidden">
+                            {badgeCount}
+                          </SidebarMenuBadge>
+                        )}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Support & Inquiries Section */}
+        <SidebarGroup className="mt-4">
+          <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 group-data-[collapsible=icon]:hidden">
+            Support & Help
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {supportNav.map(({ href, label, icon: Icon, section, badgeCount }) => {
+                const active = isItemActive(href, section);
+                return (
+                  <SidebarMenuItem key={href}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={active}
+                      tooltip={label}
+                      className="rounded-xl data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-bold text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                    >
+                      <Link href={href} className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-2.5">
+                          <Icon className="w-4 h-4 shrink-0" />
+                          <span className="group-data-[collapsible=icon]:hidden">{label}</span>
+                        </div>
+                        {badgeCount !== undefined && badgeCount > 0 && (
+                          <SidebarMenuBadge className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full group-data-[collapsible=icon]:hidden">
                             {badgeCount}
                           </SidebarMenuBadge>
                         )}

@@ -6,12 +6,11 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { TicketIcon, MapPinIcon, ShieldCheckIcon, PlusIcon, SearchIcon, FilterIcon, CalendarIcon, Sparkles } from 'lucide-react';
+import { TicketIcon, MapPinIcon, ShieldCheckIcon, PlusIcon, SearchIcon, FilterIcon, CalendarIcon, Sparkles, Loader2, Send, CheckCircle2 } from 'lucide-react';
 import EventCard from '@/components/event-card';
 import CategoryChips from '@/components/category-chips';
 import { Event } from '@/lib/db';
-
-const DASHBOARD_URL = 'https://dashboard.zosavuta.com';
+import { Input } from '@/components/ui/input';
 
 export default function HomePage() {
   const [events, setEvents] = useState<Event[]>([]);
@@ -20,6 +19,34 @@ export default function HomePage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [sortBy, setSortBy] = useState('upcoming');
+  const [email, setEmail] = useState('');
+  const [subStatus, setSubStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [subMessage, setSubMessage] = useState('');
+
+  const handleSubscribe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setSubStatus('loading');
+    try {
+      const res = await fetch('/api/newsletter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), source: 'footer' }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSubStatus('success');
+        setSubMessage(data.message || "You're subscribed!");
+        setEmail('');
+      } else {
+        setSubStatus('error');
+        setSubMessage(data.error || 'Something went wrong.');
+      }
+    } catch {
+      setSubStatus('error');
+      setSubMessage('Network error. Please try again.');
+    }
+  };
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -286,7 +313,7 @@ export default function HomePage() {
                 </div>
                 <h3 className="text-3xl font-bold mb-4">I want to attend</h3>
                 <p className="text-muted-foreground mb-8 text-lg">
-                  Browse thousands of events, secure your tickets, and even book your transport all in one place.
+                  Browse thousands of events and secure your tickets.
                 </p>
                 <Link href="#explore">
                   <Button size="lg" className="w-full text-lg h-14 bg-primary hover:bg-primary/90 text-primary-foreground">
@@ -297,6 +324,25 @@ export default function HomePage() {
               <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-colors" />
             </Card>
 
+            {/* Customer Organizer Path */}
+            <Card className="group relative overflow-hidden p-8 border-2 border-secondary/10 hover:border-secondary/40 transition-all duration-300 bg-gradient-to-br from-card to-secondary/5">
+              <div className="relative z-10">
+                <div className="w-16 h-16 bg-secondary/10 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                  <PlusIcon className="w-8 h-8 text-secondary" />
+                </div>
+                <h3 className="text-3xl font-bold mb-4">I want to organize & attend</h3>
+                <p className="text-muted-foreground mb-8 text-lg">
+                  Reach a wider audience, manage ticket sales, and track analytics with our powerful dashboard.
+                </p>
+                <Link href="/organizer">
+                  <Button size="lg" variant="secondary" className="w-full text-lg h-14 bg-secondary hover:bg-secondary/90 text-secondary-foreground">
+                    Create Event
+                  </Button>
+                </Link>
+              </div>
+              <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-secondary/5 rounded-full blur-3xl group-hover:bg-secondary/10 transition-colors" />
+            </Card>
+
             {/* Organizer Path */}
             <Card className="group relative overflow-hidden p-8 border-2 border-secondary/10 hover:border-secondary/40 transition-all duration-300 bg-gradient-to-br from-card to-secondary/5">
               <div className="relative z-10">
@@ -305,11 +351,11 @@ export default function HomePage() {
                 </div>
                 <h3 className="text-3xl font-bold mb-4">I want to organize</h3>
                 <p className="text-muted-foreground mb-8 text-lg">
-                  Reach a wider audience, manage ticket sales, and track analytics with our powerful dashboard.
+                  Reach a wider audience, manage ticket sales, and track analytics with our powerful dashboard as well as browsing thousands of events.
                 </p>
                 <Link href="/organizer">
                   <Button size="lg" variant="secondary" className="w-full text-lg h-14 bg-secondary hover:bg-secondary/90 text-secondary-foreground">
-                    Create Event
+                    Discover and Create Event
                   </Button>
                 </Link>
               </div>
@@ -369,16 +415,40 @@ export default function HomePage() {
                 </Link>
               </div>
               <div className="flex w-full md:w-auto items-center gap-3">
-                <div className="flex-1 md:w-80">
-                  <input
-                    type="email"
-                    placeholder="Enter your email"
-                    className="w-full h-14 bg-white/10 border border-white/20 rounded-2xl px-6 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/20"
-                  />
-                </div>
-                <Button className="h-14 px-8 bg-white text-primary hover:bg-white/90 rounded-2xl font-black uppercase tracking-widest text-xs">
-                  Subscribe
-                </Button>
+                {subStatus === 'success' ? (
+                  <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
+                    <CheckCircle2 className="w-5 h-5 shrink-0" />
+                    <span>{subMessage}</span>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSubscribe} className="space-y-2">
+                    <div className="flex gap-2">
+                      <Input
+                        id="footer-newsletter-email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => { setEmail(e.target.value); setSubStatus('idle'); }}
+                        placeholder="Your email"
+                        required
+                        className="w-full h-14 bg-white/10 border border-white/20 rounded-2xl px-6 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/20"
+                      />
+                      <Button
+                        id="footer-newsletter-submit"
+                        type="submit"
+                        size="icon"
+                        disabled={subStatus === 'loading'}
+                        className="h-14 px-8 bg-white text-primary hover:bg-white/90 rounded-2xl font-black uppercase tracking-widest text-xs"
+                      >
+                        {subStatus === 'loading'
+                          ? <Loader2 className="w-4 h-4 animate-spin" />
+                          : <Send className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                    {subStatus === 'error' && (
+                      <p className="text-red-400 text-xs">{subMessage}</p>
+                    )}
+                  </form>
+                )}
               </div>
             </div>
           </div>

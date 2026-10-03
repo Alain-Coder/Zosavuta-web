@@ -18,6 +18,10 @@ export async function initializePayChanguPayment(input: {
   txRef: string;
   callbackUrl: string;
   returnUrl: string;
+  customization?: {
+    title?: string;
+    description?: string;
+  };
 }): Promise<PaymentInitialization> {
   const secretKey = process.env.PAYCHANGU_SECRET_KEY;
   if (!secretKey) throw new Error('PayChangu is not configured');
@@ -38,6 +42,10 @@ export async function initializePayChanguPayment(input: {
       tx_ref: input.txRef,
       callback_url: input.callbackUrl,
       return_url: input.returnUrl,
+      customization: {
+        title: input.customization?.title || 'Zosavuta Tickets',
+        description: input.customization?.description || 'Event ticket checkout',
+      },
     }),
   });
   const responseText = await response.text();

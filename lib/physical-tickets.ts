@@ -119,36 +119,86 @@ export async function sellPhysicalTicket(ticketIdOrNumber: string, eventId: numb
   }
 }
 
+export async function sellBulkPhysicalTickets({
+  eventId,
+  ticketNumbersOrIds,
+  sellAllAllocated = false,
+  userId,
+  role,
+}: {
+  eventId: number;
+  ticketNumbersOrIds?: string[];
+  sellAllAllocated?: boolean;
+  userId: string;
+  role: string;
+}) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const event = await ownsEvent(connection, eventId, userId);
+    if (!event) throw new Error('EVENT_NOT_FOUND');
+
+    let affectedRows = 0;
+    if (sellAllAllocated) {
+      const [result] = await connection.execute(
+        `UPDATE physical_tickets SET status = 'SOLD', soldAt = CURRENT_TIMESTAMP
+         WHERE eventId = ? AND status = 'ALLOCATED'`,
+        [eventId]
+      );
+      affectedRows = (result as any).affectedRows || 0;
+    } else if (ticketNumbersOrIds && ticketNumbersOrIds.length > 0) {
+      const placeholders = ticketNumbersOrIds.map(() => '?').join(',');
+      const [result] = await connection.execute(
+        `UPDATE physical_tickets SET status = 'SOLD', soldAt = CURRENT_TIMESTAMP
+         WHERE eventId = ? AND status = 'ALLOCATED' AND (id IN (${placeholders}) OR ticketNumber IN (${placeholders}))`,
+        [eventId, ...ticketNumbersOrIds, ...ticketNumbersOrIds]
+      );
+      affectedRows = (result as any).affectedRows || 0;
+    }
+
+    await connection.execute(
+      `INSERT INTO ticket_audit_logs (actorId, actorRole, action, eventId, metadata)
+       VALUES (?, ?, 'BULK_TICKETS_SOLD', ?, ?)`,
+      [userId, role, eventId, JSON.stringify({ count: affectedRows, sellAllAllocated })]
+    );
+
+    await connection.commit();
+    return { count: affectedRows };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 export async function returnPhysicalTicket(ticketIdOrNumber: string, eventId: number, userId: string, role: string) {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
     const event = await ownsEvent(connection, eventId, userId);
     if (!event) throw new Error('EVENT_NOT_FOUND');
-    const [result] = await connection.execute(
-      `UPDATE physical_tickets SET status = 'AVAILABLE'
-       WHERE eventId = ? AND (id = ? OR ticketNumber = ?) AND status = 'ALLOCATED'`,
-      [eventId, ticketIdOrNumber, ticketIdOrNumber]
-    );
-    if ((result as any).affectedRows !== 1) throw new Error('TICKET_NOT_RETURNABLE');
     const [rows] = await connection.execute(
-      'SELECT id, ticketNumber FROM physical_tickets WHERE eventId = ? AND (id = ? OR ticketNumber = ?) LIMIT 1',
+      'SELECT id, ticketNumber, status FROM physical_tickets WHERE eventId = ? AND (id = ? OR ticketNumber = ?) LIMIT 1',
       [eventId, ticketIdOrNumber, ticketIdOrNumber]
     );
     const ticket = (rows as any[])[0];
+    if (!ticket) throw new Error('TICKET_NOT_FOUND');
+    if (ticket.status !== 'ALLOCATED') throw new Error('TICKET_NOT_RETURNABLE');
+
+    // Completely DELETE (destroy) the returned ticket so it is removed from system
     await connection.execute(
-      `UPDATE ticket_allocations SET status = 'RETURNED', returnedAt = CURRENT_TIMESTAMP
-       WHERE ticketId = ? AND status = 'ALLOCATED'`,
-      [ticket.id]
+      `DELETE FROM physical_tickets WHERE id = ? AND eventId = ? AND status = 'ALLOCATED'`,
+      [ticket.id, eventId]
     );
     await connection.execute('UPDATE events SET ticketsAvailable = ticketsAvailable + 1 WHERE id = ?', [eventId]);
     await connection.execute(
-      `INSERT INTO ticket_audit_logs (actorId, actorRole, action, eventId, ticketId)
-       VALUES (?, ?, 'TICKET_RETURNED', ?, ?)`,
-      [userId, role, eventId, ticket.id]
+      `INSERT INTO ticket_audit_logs (actorId, actorRole, action, eventId, metadata)
+       VALUES (?, ?, 'TICKET_RETURNED_DESTROYED', ?, ?)`,
+      [userId, role, eventId, JSON.stringify({ ticketId: ticket.id, ticketNumber: ticket.ticketNumber })]
     );
     await connection.commit();
-    return ticket;
+    return { id: ticket.id, ticketNumber: ticket.ticketNumber, destroyed: true };
   } catch (error) {
     await connection.rollback();
     throw error;

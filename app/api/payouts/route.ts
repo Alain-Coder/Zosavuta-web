@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import pool from '@/lib/db';
 import { getAuthUser } from '@/lib/auth-server';
-import { getPayoutEligibility } from '@/lib/payout-eligibility';
+import { getPayoutEligibility, releaseEligiblePendingBalances } from '@/lib/payout-eligibility';
 import { randomUUID } from 'crypto';
 
 export async function GET(req: NextRequest) {
   const user = await getAuthUser(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Check organizer events periodically / on-demand and release available balance for ended events
+  await releaseEligiblePendingBalances();
   const balances = await query('SELECT pendingBalance, availableBalance, paidOutBalance, currency FROM seller_balances WHERE sellerId = ?', [user.uid]);
   const rows = await query('SELECT * FROM payout_requests WHERE sellerId = ? ORDER BY createdAt DESC', [user.uid]);
   return NextResponse.json({ balance: balances[0] || { pendingBalance: 0, availableBalance: 0, paidOutBalance: 0, currency: 'MWK' }, payouts: rows });
@@ -15,8 +17,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const user = await getAuthUser(req);
-  if (!user || user.role === 'organizer') {
-    return NextResponse.json({ error: 'An eligible seller account is required' }, { status: 403 });
+  if (!user) {
+    return NextResponse.json({ error: 'An eligible seller or organizer account is required' }, { status: 403 });
   }
   const amount = Number((await req.json().catch(() => ({}))).amount);
   if (!Number.isFinite(amount) || amount <= 0) return NextResponse.json({ error: 'A positive amount is required' }, { status: 400 });

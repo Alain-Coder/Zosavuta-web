@@ -14,8 +14,8 @@ export interface FeeSchedule {
 
 const DEFAULT_FEE_SCHEDULE: FeeSchedule = {
   name: 'DEFAULT_FALLBACK',
-  buyerFeePercent: 5.0,
-  buyerFeeFixed: 100.0,
+  buyerFeePercent: 0.0,
+  buyerFeeFixed: 0.0,
   organizerFeePercent: 7.0,
   resaleFeePercent: 10.0,
   payoutFeeFixed: 500.0,
@@ -31,8 +31,8 @@ export async function getActiveFeeSchedule(): Promise<FeeSchedule> {
     if (rows && rows.length > 0) {
       return {
         name: 'ACTIVE_DB_SCHEDULE',
-        buyerFeePercent: Number(rows[0].buyerFeePercent),
-        buyerFeeFixed: Number(rows[0].buyerFeeFixed),
+        buyerFeePercent: Number(rows[0].buyerFeePercent || 0),
+        buyerFeeFixed: Number(rows[0].buyerFeeFixed || 0),
         organizerFeePercent: Number(rows[0].organizerFeePercent),
         resaleFeePercent: Number(rows[0].resaleFeePercent),
         payoutFeeFixed: Number(rows[0].payoutFeeFixed),
@@ -49,8 +49,13 @@ export async function getActiveFeeSchedule(): Promise<FeeSchedule> {
 export async function calculatePrimaryOrderFees(unitPrice: number, quantity: number) {
   const schedule = await getActiveFeeSchedule();
   const grossTicketTotal = Number(unitPrice) * Number(quantity);
-  const buyerFee = Math.round(((grossTicketTotal * (schedule.buyerFeePercent / 100)) + (schedule.buyerFeeFixed * quantity)) * 100) / 100;
+  // Transaction fees are not added onto the customer (customer pays the original ticket fee)
+  const buyerFeePercent = Number(schedule.buyerFeePercent || 0);
+  const buyerFeeFixed = Number(schedule.buyerFeeFixed || 0);
+  const buyerFee = Math.round(((grossTicketTotal * (buyerFeePercent / 100)) + (buyerFeeFixed * quantity)) * 100) / 100;
   const buyerTotal = grossTicketTotal + buyerFee;
+
+  // The transaction / platform fee is deducted from the organizer's earnings upon sending money
   const platformCommission = Math.round((grossTicketTotal * (schedule.organizerFeePercent / 100)) * 100) / 100;
   const netOrganizerEarnings = Math.max(0, grossTicketTotal - platformCommission);
 

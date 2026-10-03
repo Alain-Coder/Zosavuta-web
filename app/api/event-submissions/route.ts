@@ -50,7 +50,20 @@ export async function GET(req: NextRequest) {
     sql += ' ORDER BY s.createdAt DESC';
 
     const rows = await query(sql, params);
-    return NextResponse.json(rows);
+    const parsedRows = (rows as any[]).map((row) => ({
+      ...row,
+      ticketTypes:
+        typeof row.ticketTypes === 'string'
+          ? (() => {
+              try {
+                return JSON.parse(row.ticketTypes);
+              } catch {
+                return [];
+              }
+            })()
+          : row.ticketTypes || [],
+    }));
+    return NextResponse.json(parsedRows);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to fetch submissions';
     const isMissingTable = message.includes("event_submissions") && message.includes("doesn't exist");
@@ -85,18 +98,42 @@ export async function POST(req: NextRequest) {
       busTransport,
       seatingChart,
       ticketTypes,
+      price,
+      ticketsTotal,
     } = body;
 
     if (!title || !date || !time || !location || !venue) {
       return NextResponse.json({ error: 'Event title, date, time, location and venue are required' }, { status: 400 });
     }
 
+    // Save only the organizer-provided ticket types — no auto-calculation for missing tiers
+    let formattedTicketTypes: Array<{ name: string; price: number }> = [];
+    if (Array.isArray(ticketTypes) && ticketTypes.length > 0) {
+      formattedTicketTypes = ticketTypes
+        .filter((t: any) => t && t.name)
+        .map((t: any) => ({
+          name: String(t.name).trim(),
+          price: Math.max(0, Number(t.price) || 0),
+        }));
+    }
+
+    // The base `price` column = the Standard ticket price (or the provided price fallback)
+    const standardPrice =
+      formattedTicketTypes.find((t) => t.name.toLowerCase() === 'standard')?.price ??
+      (price != null && !isNaN(Number(price)) && Number(price) > 0 ? Number(price) : 3500);
+    const parsedTicketsTotal =
+      ticketsTotal != null && !isNaN(parseInt(String(ticketsTotal), 10)) && parseInt(String(ticketsTotal), 10) > 0
+        ? parseInt(String(ticketsTotal), 10)
+        : null;
+
+    const ticketDetailsSubmitted = parsedTicketsTotal !== null ? 1 : 0;
+
     const result = await execute(
       `INSERT INTO event_submissions (
         title, description, fullDescription, category, date, time, location, venue,
         image, price, ticketsTotal, organizerId, busTransport, seatingChart,
         status, ticketDetailsSubmitted, ticketTypes
-      ) VALUES (?,?,?,?,?,?,?,?,?, NULL, NULL, ?,?,?, 'pending', 0, ?)`,
+      ) VALUES (?,?,?,?,?,?,?,?,?, ?, ?, ?,?,?, 'pending', ?, ?)`,
       [
         title,
         description || null,
@@ -107,10 +144,13 @@ export async function POST(req: NextRequest) {
         location,
         venue,
         image || null,
+        standardPrice,
+        parsedTicketsTotal,
         user.uid,
         busTransport ? 1 : 0,
         seatingChart ? 1 : 0,
-        JSON.stringify(Array.isArray(ticketTypes) ? ticketTypes : []),
+        ticketDetailsSubmitted,
+        JSON.stringify(formattedTicketTypes),
       ]
     );
 
@@ -118,8 +158,11 @@ export async function POST(req: NextRequest) {
       {
         id: result.insertId,
         status: 'pending',
-        ticketDetailsSubmitted: false,
-        message: 'Event created with pending status. Add ticket details next.',
+        ticketDetailsSubmitted: Boolean(ticketDetailsSubmitted),
+        ticketTypes: formattedTicketTypes,
+        message: ticketDetailsSubmitted
+          ? 'Event and ticket details submitted. Awaiting admin approval.'
+          : 'Event created with pending status. Add ticket details next.',
       },
       { status: 201 }
     );

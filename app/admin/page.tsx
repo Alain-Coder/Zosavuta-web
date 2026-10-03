@@ -171,6 +171,10 @@ function AdminDashboardContent() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [financialReport, setFinancialReport] = useState<FinancialReport | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [newsletterSubscribers, setNewsletterSubscribers] = useState<any[]>([]);
+  const [newsletterStats, setNewsletterStats] = useState({ total: 0, active: 0, unsubscribed: 0 });
+  const [newsletterFilter, setNewsletterFilter] = useState<'all' | 'active' | 'unsubscribed'>('all');
+  const [newsletterSearch, setNewsletterSearch] = useState('');
   const [error, setError] = useState('');
 
   // Action states
@@ -199,12 +203,13 @@ function AdminDashboardContent() {
     try {
       const headers = { 'x-admin-id': user.uid, ...(await getAuthHeaders()) };
 
-      const [analyticsRes, submissionsRes, payoutsRes, reportRes, logsRes] = await Promise.all([
+      const [analyticsRes, submissionsRes, payoutsRes, reportRes, logsRes, newsletterRes] = await Promise.all([
         fetch('/api/admin/analytics', { headers }),
         fetch(`/api/admin/ticket-approvals?adminId=${user.uid}`, { headers }),
         fetch(`/api/admin/financial-verifications?adminId=${user.uid}`, { headers }),
         fetch(`/api/admin/financial-reports?adminId=${user.uid}`, { headers }),
         fetch(`/api/admin/audit-logs?adminId=${user.uid}&limit=50`, { headers }),
+        fetch(`/api/newsletter?adminId=${user.uid}&status=all&limit=200`, { headers }),
       ]);
 
       if (analyticsRes.ok) setAnalytics(await analyticsRes.json());
@@ -220,6 +225,11 @@ function AdminDashboardContent() {
       if (logsRes.ok) {
         const d = await logsRes.json();
         setAuditLogs(d.logs || []);
+      }
+      if (newsletterRes.ok) {
+        const nd = await newsletterRes.json();
+        setNewsletterSubscribers(nd.subscribers || []);
+        setNewsletterStats(nd.stats || { total: 0, active: 0, unsubscribed: 0 });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load admin data';
@@ -745,6 +755,148 @@ function AdminDashboardContent() {
           </Card>
         </div>
       )}
+
+      {/* ──────────────────────────── NEWSLETTER ──────────────────────────── */}
+      {section === 'newsletter' && (() => {
+        const filtered = newsletterSubscribers
+          .filter((s) => newsletterFilter === 'all' || s.status === newsletterFilter)
+          .filter((s) =>
+            newsletterSearch === '' ||
+            s.email.toLowerCase().includes(newsletterSearch.toLowerCase())
+          );
+
+        const handleExportCSV = () => {
+          const rows = [['Email', 'Status', 'Source', 'Subscribed At'], ...filtered.map((s) => [
+            s.email, s.status, s.source, new Date(s.subscribedAt).toLocaleDateString(),
+          ])];
+          const csv = rows.map((r) => r.join(',')).join('\n');
+          const blob = new Blob([csv], { type: 'text/csv' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = 'newsletter_subscribers.csv'; a.click();
+          URL.revokeObjectURL(url);
+        };
+
+        const handleUnsubscribe = async (email: string) => {
+          try {
+            const headers = await import('@/lib/auth-client').then(m => m.getAuthHeaders());
+            const res = await fetch('/api/newsletter', {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify({ email }),
+            });
+            if (res.ok) {
+              toast.success(`${email} unsubscribed.`);
+              await fetchData();
+            } else {
+              toast.error('Failed to unsubscribe.');
+            }
+          } catch { toast.error('Error.'); }
+        };
+
+        return (
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-primary mb-1">Marketing</p>
+              <h1 className="text-2xl font-black tracking-tight">Newsletter Subscribers</h1>
+              <p className="text-muted-foreground text-sm mt-1">People who opted in to receive event updates and offers.</p>
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-4">
+              <KpiCard icon={<UsersIcon className="w-5 h-5" />} label="Total Subscribers" value={String(newsletterStats.total)} accent="text-primary" />
+              <KpiCard icon={<CheckCircle2Icon className="w-5 h-5" />} label="Active" value={String(newsletterStats.active)} accent="text-emerald-600" />
+              <KpiCard icon={<XCircleIcon className="w-5 h-5" />} label="Unsubscribed" value={String(newsletterStats.unsubscribed)} accent="text-rose-500" />
+            </div>
+
+            {/* Toolbar */}
+            <Card className="p-4">
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+                <div className="flex gap-2 flex-wrap">
+                  {(['all', 'active', 'unsubscribed'] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setNewsletterFilter(f)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide transition-all ${
+                        newsletterFilter === f
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                      }`}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <Input
+                    placeholder="Search email…"
+                    value={newsletterSearch}
+                    onChange={(e) => setNewsletterSearch(e.target.value)}
+                    className="h-9 text-sm w-full sm:w-64"
+                  />
+                  <Button size="sm" variant="outline" onClick={handleExportCSV} className="shrink-0 font-bold gap-1.5">
+                    ↓ CSV
+                  </Button>
+                </div>
+              </div>
+            </Card>
+
+            {/* Table */}
+            <Card className="overflow-hidden">
+              {filtered.length === 0 ? (
+                <div className="p-12 text-center">
+                  <p className="text-muted-foreground text-sm">No subscribers found.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 border-b border-border">
+                      <tr>
+                        <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">#</th>
+                        <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Email</th>
+                        <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Status</th>
+                        <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Source</th>
+                        <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Subscribed</th>
+                        <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {filtered.map((sub: any, i: number) => (
+                        <tr key={sub.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-4 py-3 text-muted-foreground text-xs">{i + 1}</td>
+                          <td className="px-4 py-3 font-medium text-foreground">{sub.email}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              sub.status === 'active'
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                                : 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+                            }`}>{sub.status}</span>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground text-xs capitalize">{sub.source}</td>
+                          <td className="px-4 py-3 text-muted-foreground text-xs">
+                            {new Date(sub.subscribedAt).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-3">
+                            {sub.status === 'active' && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 h-7 px-2"
+                                onClick={() => void handleUnsubscribe(sub.email)}
+                              >
+                                Unsubscribe
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          </div>
+        );
+      })()}
 
       {/* ── Reject Reason Dialog ── */}
       <Dialog open={!!rejectDialog} onOpenChange={() => setRejectDialog(null)}>

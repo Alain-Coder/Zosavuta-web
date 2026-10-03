@@ -18,6 +18,7 @@ const SECTION_TITLES: Record<string, string> = {
   reports: 'Financial Reports',
   refunds: 'Refunds & Reversals',
   audit: 'Audit Trail',
+  messages: 'Contact Messages',
 };
 
 function AdminHeader() {
@@ -28,6 +29,8 @@ function AdminHeader() {
   let pageTitle = 'Admin Control';
   if (pathname.startsWith('/admin/operators')) {
     pageTitle = 'Bus Operators';
+  } else if (pathname.startsWith('/admin/contact-messages') || pathname.startsWith('/admin/messages')) {
+    pageTitle = 'Contact Messages';
   } else if (SECTION_TITLES[section]) {
     pageTitle = SECTION_TITLES[section];
   }

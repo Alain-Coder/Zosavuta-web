@@ -30,7 +30,7 @@ export default function TermsPage() {
               Acceptance of Terms
             </h2>
             <p className="text-sm text-muted-foreground leading-relaxed font-medium">
-              By accessing, browsing, or purchasing tickets through Zosavuta (including zosavuta.com and dashboard.zosavuta.com), you agree to be bound by these Terms of Service and all applicable laws of Malawi. If you do not agree to these terms, please refrain from using our services.
+              By accessing, browsing, or purchasing tickets through Zosavuta, you agree to be bound by these Terms of Service and all applicable laws of Malawi. If you do not agree to these terms, please refrain from using our services.
             </p>
           </section>
 
@@ -43,8 +43,7 @@ export default function TermsPage() {
               Ticket Purchases & Redirection
             </h2>
             <p className="text-sm text-muted-foreground leading-relaxed font-medium">
-              Zosavuta operates as a primary event discovery platform. Ticket purchasing, user account registration, payment processing, and electronic ticket issuance are completed securely through our dedicated subdomain (<code className="text-primary font-bold">dashboard.zosavuta.com</code>).
-            </p>
+              Zosavuta operates as a primary event discovery platform for events happening in Malawi. Including ticket purchasing, user account registration, payment processing, and electronic ticket issuance.</p>
             <ul className="space-y-2 pt-2 text-xs font-semibold text-muted-foreground">
               <li className="flex items-center gap-2">
                 <Check className="w-4 h-4 text-emerald-500 shrink-0" />

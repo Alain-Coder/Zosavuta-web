@@ -46,6 +46,22 @@ export async function POST(req: NextRequest) {
       const sub = submissions[0];
       if (!sub) return NextResponse.json({ error: 'Submission not found' }, { status: 404 });
 
+      let parsedTicketTypes: Array<{ name: string; price: number }> = [];
+      if (typeof sub.ticketTypes === 'string') {
+        try {
+          parsedTicketTypes = JSON.parse(sub.ticketTypes);
+        } catch {
+          parsedTicketTypes = [];
+        }
+      } else if (Array.isArray(sub.ticketTypes)) {
+        parsedTicketTypes = sub.ticketTypes;
+      }
+
+      const basePrice = Number(sub.price || 0) || 3500;
+
+      const standardPrice = parsedTicketTypes.find((t) => t.name.toLowerCase() === 'standard')?.price ?? basePrice;
+      const ticketTypesJson = JSON.stringify(parsedTicketTypes);
+
       let eventId = sub.eventId;
       if (!eventId) {
         const result = await execute(
@@ -61,20 +77,20 @@ export async function POST(req: NextRequest) {
             sub.location,
             sub.venue,
             sub.image,
-            sub.price || 0,
+            standardPrice,
             sub.ticketsTotal || 0,
             sub.ticketsTotal || 0,
             sub.organizerId,
             sub.busTransport || 0,
             sub.seatingChart || 0,
-            sub.ticketTypes || JSON.stringify([{ name: 'Standard', price: Number(sub.price || 0) }]),
+            ticketTypesJson,
           ]
         );
         eventId = result.insertId;
       } else {
         await execute(
           `UPDATE events SET status = 'active', price = ?, ticketsTotal = ?, ticketsAvailable = ?, ticketTypes = ? WHERE id = ?`,
-          [sub.price || 0, sub.ticketsTotal || 0, sub.ticketsTotal || 0, sub.ticketTypes || JSON.stringify([{ name: 'Standard', price: Number(sub.price || 0) }]), eventId]
+          [standardPrice, sub.ticketsTotal || 0, sub.ticketsTotal || 0, ticketTypesJson, eventId]
         );
       }
 

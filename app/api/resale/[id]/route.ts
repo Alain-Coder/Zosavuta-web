@@ -22,13 +22,13 @@ export async function POST(
     const [orderRows] = await conn.execute(
       `SELECT r.*, o.status AS orderStatus
        FROM resale_listings r JOIN orders o ON o.id = r.orderId
-      WHERE r.id = ? AND DATEDIFF(o.eventDate, CURDATE()) = 1 FOR UPDATE`,
+      WHERE r.id = ? AND (o.eventDate >= CURDATE() OR o.eventDate IS NULL) FOR UPDATE`,
       [id]
     );
     const listing = (orderRows as { orderId: string; sellerId: string; price: number; status: string; orderStatus: string }[])[0];
     if (!listing) {
       await conn.rollback();
-      return NextResponse.json({ error: 'Listing not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Listing not found or event has passed' }, { status: 404 });
     }
     if (listing.status !== 'ACTIVE' || listing.orderStatus !== 'confirmed') {
       await conn.rollback();
@@ -71,8 +71,8 @@ export async function DELETE(
 
   const { id } = await params;
 
-  const listings = await query<{ sellerId: string; status: string }>(
-    'SELECT sellerId, status FROM resale_listings WHERE id = ?',
+  const listings = await query<{ sellerId: string; status: string; ticketId: number | null; orderId: string }>(
+    'SELECT sellerId, status, ticketId, orderId FROM resale_listings WHERE id = ?',
     [id]
   );
 
@@ -88,5 +88,12 @@ export async function DELETE(
   }
 
   await execute("UPDATE resale_listings SET status = 'CANCELLED' WHERE id = ?", [id]);
-  return NextResponse.json({ success: true });
+  if (listings[0].ticketId) {
+    await execute("UPDATE order_tickets SET listedForResale = 0 WHERE id = ?", [listings[0].ticketId]);
+  } else {
+    // If ticketId was null, unlist first ticket on this order
+    await execute("UPDATE order_tickets SET listedForResale = 0 WHERE orderId = ? LIMIT 1", [listings[0].orderId]);
+  }
+
+  return NextResponse.json({ success: true, message: 'Ticket unlisted and restored to your bookings' });
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,17 @@ import { useToast } from '@/components/ui/use-toast';
 import { QRCodeSVG } from 'qrcode.react';
 import { downloadTicketPdf } from '@/lib/ticket-pdf';
 
+export interface TicketItem {
+  id: number;
+  ticketNumber: string;
+  verificationToken: string | null;
+  status: string;
+  listedForResale: boolean;
+  resaleListingId: string | null;
+  resalePrice?: number | null;
+  resaleStatus?: string | null;
+}
+
 interface Booking {
   id: string;
   eventId: string;
@@ -39,7 +50,9 @@ interface Booking {
   bookingDate: string;
   ticketNumbers: string[];
   ticketTokens?: (string | null)[];
+  tickets?: TicketItem[];
   isListed?: boolean;
+  isResalePurchase?: boolean;
   resalePrice?: number;
   tier?: string;
   firstName?: string;
@@ -52,46 +65,90 @@ export default function MyBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await fetch(`/api/orders?userId=${user.uid}`);
+      let data: Booking[] = (res.ok && res.headers.get('content-type')?.includes('application/json'))
+        ? await res.json()
+        : [];
+
+      try {
+        const headers = await getAuthHeaders();
+        const resaleRes = await fetch(`/api/resale?sellerId=${user.uid}&status=ACTIVE`, { headers });
+        if (resaleRes.ok && resaleRes.headers.get('content-type')?.includes('application/json')) {
+          const listings: any[] = await resaleRes.json();
+          const listingByTicketId = new Map(listings.filter((l) => l.ticketId).map((l) => [Number(l.ticketId), l]));
+          const listingByOrderId = new Map(listings.map((l) => [l.orderId, l]));
+
+          data = data.map((b: any) => {
+            const updatedTickets = (b.tickets || []).map((t: any) => {
+              const foundListing = listingByTicketId.get(t.id) || (b.quantity === 1 ? listingByOrderId.get(b.id) : null);
+              if (foundListing) {
+                return {
+                  ...t,
+                  listedForResale: true,
+                  resalePrice: Number(foundListing.price),
+                  resaleListingId: foundListing.id,
+                };
+              }
+              return t;
+            });
+
+            const anyListed = updatedTickets.some((t: any) => t.listedForResale) || listingByOrderId.has(b.id);
+            const activeResale = listings.find((l) => l.orderId === b.id);
+
+            return {
+              ...b,
+              tickets: updatedTickets,
+              isListed: anyListed,
+              resalePrice: activeResale ? Number(activeResale.price) : b.resalePrice,
+            };
+          });
+        }
+      } catch {
+        // resale fetch optional
+      }
+
+      setBookings(data);
+    } catch {
+      setBookings([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
   useEffect(() => {
     if (authLoading) return;
     if (!user) {
       router.push('/auth');
       return;
     }
-
-    const fetchData = async () => {
+    const checkRoleAndFetch = async () => {
       try {
-        const res = await fetch(`/api/orders?userId=${user.uid}`);
-        let data: Booking[] = (res.ok && res.headers.get('content-type')?.includes('application/json'))
-          ? await res.json()
-          : [];
-
-        try {
-          const headers = await getAuthHeaders();
-          const resaleRes = await fetch(`/api/resale?sellerId=${user.uid}&status=ACTIVE`, { headers });
-          if (resaleRes.ok && resaleRes.headers.get('content-type')?.includes('application/json')) {
-            const listings: { orderId: string; price: number }[] = await resaleRes.json();
-            const listedMap = new Map(listings.map((l) => [l.orderId, l.price]));
-            data = data.map((b) => ({
-              ...b,
-              isListed: listedMap.has(b.id),
-              resalePrice: listedMap.get(b.id),
-            }));
+        const res = await fetch(`/api/users/${user.uid}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.role === 'organizer') {
+            router.replace('/organizer/dashboard');
+            return;
           }
-        } catch {
-          // resale fetch optional
+          if (data.role === 'admin' || data.role === 'accountant') {
+            router.replace('/admin');
+            return;
+          }
+          if (data.role === 'operator') {
+            router.replace('/operator/dashboard');
+            return;
+          }
         }
-
-        setBookings(data);
       } catch {
-        setBookings([]);
-      } finally {
-        setLoading(false);
+        // continue
       }
+      fetchData();
     };
-
-    fetchData();
-  }, [user, authLoading, router]);
+    checkRoleAndFetch();
+  }, [user, authLoading, router, fetchData]);
 
   if (loading || authLoading || !user) {
     return (
@@ -141,25 +198,7 @@ export default function MyBookingsPage() {
                   key={booking.id}
                   booking={booking}
                   status="confirmed"
-                  onUpdate={async () => {
-                    try {
-                      const headers = await getAuthHeaders();
-                      const resaleRes = await fetch(`/api/resale?sellerId=${user!.uid}&status=ACTIVE`, { headers });
-                      const listings: { orderId: string; price: number }[] = resaleRes.ok ? await resaleRes.json() : [];
-                      const listedMap = new Map(listings.map((l) => [l.orderId, l.price]));
-                      setBookings((prev) =>
-                        prev.map((b) =>
-                          b.id === booking.id
-                            ? { ...b, isListed: listedMap.has(b.id), resalePrice: listedMap.get(b.id) }
-                            : b
-                        )
-                      );
-                    } catch {
-                      setBookings((prev) =>
-                        prev.map((b) => (b.id === booking.id ? { ...b, isListed: true } : b))
-                      );
-                    }
-                  }}
+                  onUpdate={fetchData}
                 />
               ))
             )}
@@ -172,7 +211,7 @@ export default function MyBookingsPage() {
               </Card>
             ) : (
               pendingBookings.map((booking) => (
-                <BookingCard key={booking.id} booking={booking} status="pending" />
+                <BookingCard key={booking.id} booking={booking} status="pending" onUpdate={fetchData} />
               ))
             )}
           </TabsContent>
@@ -204,12 +243,31 @@ function BookingCard({
   status: 'confirmed' | 'pending' | 'used';
   onUpdate?: () => void;
 }) {
-  const [showQR, setShowQR] = useState(false);
   const [showResaleDialog, setShowResaleDialog] = useState(false);
   const [resalePrice, setResalePrice] = useState(booking.price);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSoldOut, setIsSoldOut] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [selectedTicketIds, setSelectedTicketIds] = useState<number[]>([]);
   const { toast } = useToast();
+
+  // Derived helpers
+  const tickets: TicketItem[] = booking.tickets || [];
+  const unlistedTickets = tickets.filter((t) => !t.listedForResale && t.status === 'VALID');
+  const listedTickets = tickets.filter((t) => t.listedForResale);
+  const hasUnlisted = unlistedTickets.length > 0;
+
+  const openResaleDialog = () => {
+    setSelectedTicketIds(unlistedTickets.map((t) => t.id));
+    setResalePrice(booking.price);
+    setShowResaleDialog(true);
+  };
+
+  const toggleTicketSelection = (ticketId: number) => {
+    setSelectedTicketIds((prev) =>
+      prev.includes(ticketId) ? prev.filter((id) => id !== ticketId) : [...prev, ticketId]
+    );
+  };
 
   useEffect(() => {
     const checkSoldOut = async () => {
@@ -251,20 +309,25 @@ function BookingCard({
   };
 
   const handleResaleListing = async () => {
+    if (selectedTicketIds.length === 0) {
+      toast({ variant: 'destructive', title: 'No tickets selected', description: 'Please select at least one ticket to list.' });
+      return;
+    }
     setIsSubmitting(true);
     try {
       const headers = await getAuthHeaders();
       const res = await fetch('/api/resale', {
         method: 'POST',
-        headers,
-        body: JSON.stringify({ orderId: booking.id, price: resalePrice }),
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: booking.id, price: resalePrice, ticketIds: selectedTicketIds }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to list ticket');
 
+      const count = selectedTicketIds.length;
       toast({
-        title: 'Ticket Listed!',
-        description: `Your ticket for ${booking.eventTitle} is now on the marketplace for MWK ${resalePrice.toLocaleString()}.`,
+        title: count > 1 ? `${count} Tickets Listed!` : 'Ticket Listed!',
+        description: `${count > 1 ? `${count} tickets` : 'Your ticket'} for ${booking.eventTitle} ${count > 1 ? 'are' : 'is'} now on the marketplace for MWK ${resalePrice.toLocaleString()} each.`,
       });
       setShowResaleDialog(false);
       if (onUpdate) onUpdate();
@@ -279,29 +342,107 @@ function BookingCard({
     }
   };
 
+  const handleCancelResale = async (listingId: string) => {
+    setCancellingId(listingId);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/resale/${listingId}`, { method: 'DELETE', headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to cancel listing');
+      toast({ title: 'Listing Cancelled', description: 'Your ticket has been removed from the marketplace and your QR code is restored.' });
+      if (onUpdate) onUpdate();
+    } catch (error: unknown) {
+      toast({ variant: 'destructive', title: 'Error', description: error instanceof Error ? error.message : 'Could not cancel the listing.' });
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
   const downloadTickets = async () => {
-    const tokens = booking.ticketTokens || [];
-    if (!tokens.length || tokens.every((token) => !token)) {
-      toast({ variant: 'destructive', title: 'Ticket download unavailable', description: 'This ticket was issued before secure QR verification was enabled.' });
+    const downloadable = tickets.length > 0
+      ? tickets.filter((t) => !t.listedForResale && t.verificationToken)
+      : [];
+
+    if (downloadable.length === 0 && tickets.length > 0) {
+      toast({ variant: 'destructive', title: 'No downloadable tickets', description: 'All your tickets are currently listed for resale.' });
       return;
     }
-    await downloadTicketPdf({ title: booking.eventTitle, date: formatDate(booking.eventDate), time: booking.eventTime, venue: booking.eventVenue, location: booking.eventLocation }, tokens.flatMap((token, index) => token ? [{ ticketNumber: booking.ticketNumbers?.[index] || `Ticket ${index + 1}`, token, ticketType: booking.tier || 'Standard', price: booking.price }] : []));
+
+    if (downloadable.length === 0) {
+      const tokens = (booking.ticketTokens || []).filter(Boolean) as string[];
+      if (!tokens.length) {
+        toast({ variant: 'destructive', title: 'Ticket download unavailable', description: 'This ticket was issued before secure QR verification was enabled.' });
+        return;
+      }
+      await downloadTicketPdf(
+        { title: booking.eventTitle, date: formatDate(booking.eventDate), time: booking.eventTime, venue: booking.eventVenue, location: booking.eventLocation },
+        tokens.map((token, index) => ({ ticketNumber: booking.ticketNumbers?.[index] || `Ticket ${index + 1}`, token, ticketType: booking.tier || 'Standard', price: booking.price }))
+      );
+      return;
+    }
+
+    await downloadTicketPdf(
+      { title: booking.eventTitle, date: formatDate(booking.eventDate), time: booking.eventTime, venue: booking.eventVenue, location: booking.eventLocation },
+      downloadable.map((t) => ({ ticketNumber: t.ticketNumber, token: t.verificationToken || '', ticketType: booking.tier || 'Standard', price: booking.price }))
+    );
   };
 
   const resaleDialogModal = (
     <Dialog open={showResaleDialog} onOpenChange={setShowResaleDialog}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>Resell your Ticket</DialogTitle>
+          <DialogTitle>Resell {unlistedTickets.length > 1 ? 'Ticket(s)' : 'Ticket'}</DialogTitle>
           <DialogDescription>
-            Set a price for your ticket. Other users will be able to see and buy it from the marketplace.
+            {unlistedTickets.length > 1
+              ? 'Select which ticket(s) to list. Each will appear separately on the Marketplace.'
+              : 'Set a price and list your ticket on the Marketplace.'}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
+          {/* Ticket selector – only shown when 2+ unlisted tickets */}
+          {unlistedTickets.length > 1 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-bold">Select Ticket(s) to Sell</Label>
+                <div className="flex gap-2">
+                  <button type="button" className="text-xs text-orange-600 font-bold hover:underline cursor-pointer" onClick={() => setSelectedTicketIds(unlistedTickets.map((t) => t.id))}>All</button>
+                  <span className="text-xs text-muted-foreground">·</span>
+                  <button type="button" className="text-xs text-muted-foreground hover:underline cursor-pointer" onClick={() => setSelectedTicketIds([])}>Clear</button>
+                </div>
+              </div>
+              <div className="rounded-xl border border-border overflow-hidden">
+                {unlistedTickets.map((ticket, idx) => (
+                  <label
+                    key={ticket.id}
+                    className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${selectedTicketIds.includes(ticket.id)
+                      ? 'bg-orange-50 border-l-2 border-orange-500'
+                      : 'hover:bg-muted/50'
+                      } ${idx > 0 ? 'border-t border-border' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 accent-orange-600 cursor-pointer"
+                      checked={selectedTicketIds.includes(ticket.id)}
+                      onChange={() => toggleTicketSelection(ticket.id)}
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-foreground">{ticket.ticketNumber}</p>
+                      <p className="text-xs text-muted-foreground">Ticket {idx + 1} of {unlistedTickets.length}</p>
+                    </div>
+                    {selectedTicketIds.includes(ticket.id) && (
+                      <span className="text-[10px] font-black text-orange-600 uppercase tracking-widest">Selected</span>
+                    )}
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">{selectedTicketIds.length} of {unlistedTickets.length} ticket(s) selected</p>
+            </div>
+          )}
+
           <div className="space-y-2">
-            <Label htmlFor="price">Asking Price (MWK)</Label>
+            <Label htmlFor="resale-price">Asking Price per Ticket (MWK)</Label>
             <Input
-              id="price"
+              id="resale-price"
               type="number"
               value={resalePrice}
               onChange={(e) => setResalePrice(Number(e.target.value))}
@@ -309,29 +450,34 @@ function BookingCard({
             />
             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
               <InfoIcon className="w-3 h-3" />
-              Original price: MWK {booking.price.toLocaleString()}
+              Original price: MWK {booking.price.toLocaleString()} per ticket
+              {selectedTicketIds.length > 1 && (
+                <span className="ml-1 font-bold">· Total: MWK {(resalePrice * selectedTicketIds.length).toLocaleString()}</span>
+              )}
             </p>
           </div>
 
           <div className="bg-orange-50 border border-orange-100 p-3 rounded-lg text-xs text-orange-800">
             <p className="font-bold mb-1">How it works:</p>
             <ul className="list-disc ml-4 space-y-1">
-              <li>Your ticket will be listed on the Marketplace.</li>
-              <li>Once someone buys it, you will receive the funds.</li>
-              <li>Your original ticket will be invalidated and a new one issued to the buyer.</li>
+              <li>Selected ticket(s) will be listed on the Marketplace.</li>
+              <li>Their QR codes will be hidden until the listing is cancelled or sold.</li>
+              <li>Once someone buys a ticket, you receive the funds and it transfers to the buyer.</li>
             </ul>
           </div>
         </div>
         <DialogFooter>
-          <Button className="cursor-pointer" variant="outline" onClick={() => setShowResaleDialog(false)}>
-            Cancel
-          </Button>
+          <Button className="cursor-pointer" variant="outline" onClick={() => setShowResaleDialog(false)}>Cancel</Button>
           <Button
             className="bg-orange-600 hover:bg-orange-700 text-white cursor-pointer"
             onClick={handleResaleListing}
-            disabled={isSubmitting}
+            disabled={isSubmitting || selectedTicketIds.length === 0}
           >
-            {isSubmitting ? "Listing..." : "Confirm Listing"}
+            {isSubmitting
+              ? 'Listing...'
+              : selectedTicketIds.length === 0
+                ? 'Select a Ticket'
+                : `List ${selectedTicketIds.length > 1 ? `${selectedTicketIds.length} Tickets` : 'Ticket'}`}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -379,10 +525,16 @@ function BookingCard({
                   <div>
                     <span className="text-amber-400 font-bold tracking-[0.2em] text-[8px] uppercase mb-1 block">Premium Live Experience</span>
                     <h3 className="text-2xl font-black tracking-tight text-white uppercase">{booking.eventTitle}</h3>
-                    <div className="flex gap-2 mt-2">
+                    <div className="flex flex-wrap gap-2 mt-2">
                       <span className="inline-flex px-3 py-1 rounded-full text-[10px] font-black bg-gradient-to-r from-amber-600 via-amber-400 to-amber-600 text-black items-center gap-1.5 uppercase tracking-widest shadow-lg shadow-amber-500/20">
                         {booking.tier || 'Standard'} Ticket
                       </span>
+                      {booking.isResalePurchase && (
+                        <span className="inline-flex px-3 py-1 rounded-full text-[10px] font-black bg-gradient-to-r from-orange-600 to-amber-600 text-white items-center gap-1.5 uppercase tracking-widest shadow-md">
+                          <TagIcon className="w-3 h-3" />
+                          Verified Resale Purchase
+                        </span>
+                      )}
                       {booking.isListed && (
                         <span className="inline-flex px-3 py-1 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 items-center gap-1.5 uppercase tracking-widest shadow-sm">
                           <TagIcon className="w-3 h-3" />
@@ -436,15 +588,26 @@ function BookingCard({
                       <DownloadIcon className="w-4 h-4" />
                       Download Ticket
                     </Button>
-                    {!booking.isListed && (
+                    {hasUnlisted && (
                       <Button
-                        onClick={() => setShowResaleDialog(true)}
+                        onClick={openResaleDialog}
                         className="gap-2 h-10 rounded-xl font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white border-none shadow-md shadow-orange-600/20 cursor-pointer"
                       >
                         <TagIcon className="w-4 h-4" />
-                        Resell Ticket
+                        Resell {unlistedTickets.length > 1 ? `(${unlistedTickets.length}) Tickets` : 'Ticket'}
                       </Button>
                     )}
+                    {listedTickets.map((t) => (
+                      <Button
+                        key={t.resaleListingId}
+                        variant="outline"
+                        disabled={cancellingId === t.resaleListingId}
+                        onClick={() => t.resaleListingId && handleCancelResale(t.resaleListingId)}
+                        className="gap-2 h-10 rounded-xl font-bold text-xs uppercase tracking-wider border-orange-400 text-orange-600 hover:bg-orange-50 cursor-pointer"
+                      >
+                        {cancellingId === t.resaleListingId ? 'Cancelling...' : `Cancel Resale (${t.ticketNumber.split('-').pop()})`}
+                      </Button>
+                    ))}
                   </>
                 )}
                 {status === 'pending' && (
@@ -477,22 +640,44 @@ function BookingCard({
           {/* Right Side: Stub & Actual QR */}
           <div className="md:w-64 bg-black/40 p-6 flex flex-col items-center justify-center relative border-l border-amber-500/10 z-10">
             <div className="text-center w-full">
+              {booking.isResalePurchase ? (
+                <div className="mb-3">
+                  <span className="inline-flex px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-orange-500/20 text-orange-400 border border-orange-500/40">
+                    Verified Resale QR
+                  </span>
+                </div>
+              ) : null}
               <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500/80 mb-4">Admit VIP {booking.quantity}</p>
 
-              <div className="bg-white p-3.5 rounded-2xl shadow-xl mx-auto mb-4 border border-amber-500/20 hover:shadow-2xl transition-all duration-300">
-                <div className="flex flex-wrap justify-center gap-3">
-                  {(booking.ticketTokens || [null]).map((token, index) => token ? (
-                    <div key={token} className="text-center">
-                      <QRCodeSVG value={`${window.location.origin}/tickets/verify/${token}`} size={110} bgColor="#ffffff" fgColor="#000000" level="Q" includeMargin className="mx-auto" />
-                      <p className="mt-1 text-[9px] font-bold text-zinc-600">Ticket {index + 1}</p>
-                    </div>
-                  ) : null)}
-                </div>
+              <div className="flex flex-col gap-3 items-center">
+                {(tickets.length > 0 ? tickets : (booking.ticketTokens || []).map((tok, i) => ({
+                  id: i,
+                  ticketNumber: booking.ticketNumbers?.[i] || `Ticket ${i + 1}`,
+                  verificationToken: tok || '',
+                  status: 'VALID',
+                  listedForResale: false,
+                  resaleListingId: null,
+                } as TicketItem))).map((ticket: TicketItem, index: number) => (
+                  <div key={ticket.id} className="w-full">
+                    {ticket.listedForResale ? (
+                      <div className="bg-orange-950/60 border border-orange-500/40 rounded-2xl p-4 flex flex-col items-center gap-2">
+                        <TagIcon className="w-8 h-8 text-orange-400" />
+                        <p className="text-[10px] font-black text-orange-300 uppercase tracking-widest text-center">Listed for Resale</p>
+                        <p className="text-[9px] text-orange-400/70 text-center">QR hidden while listed</p>
+                        <p className="text-[9px] font-mono text-amber-500 mt-1">{ticket.ticketNumber}</p>
+                      </div>
+                    ) : ticket.verificationToken ? (
+                      <div className="bg-white p-3 rounded-2xl shadow-xl border border-amber-500/20 hover:shadow-2xl transition-all duration-300">
+                        <QRCodeSVG value={`${typeof window !== 'undefined' ? window.location.origin : ''}/tickets/verify/${ticket.verificationToken}`} size={100} bgColor="#ffffff" fgColor="#000000" level="Q" includeMargin className="mx-auto" />
+                        <p className="mt-1 text-[9px] font-bold text-zinc-600 text-center">Ticket {index + 1} · {ticket.ticketNumber}</p>
+                        {booking.isResalePurchase && (
+                          <p className="text-[8px] font-bold text-orange-600 text-center uppercase tracking-widest mt-0.5">Resale Scan QR</p>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
               </div>
-
-              <p className="text-xs font-mono font-bold text-amber-400 bg-zinc-900 py-1.5 px-3 rounded-lg border border-amber-500/20">
-                {booking.ticketNumbers?.[0] || booking.id.split('-').pop()}
-              </p>
 
               <p className="text-[9px] font-black uppercase tracking-[0.25em] text-amber-500 mt-4 animate-pulse">
                 To be scanned at VIP entrance
@@ -541,7 +726,13 @@ function BookingCard({
               <div className="flex items-start justify-between mb-4 relative z-10">
                 <div>
                   <h3 className="text-2xl font-black tracking-tight text-foreground">{booking.eventTitle}</h3>
-                  <div className="flex gap-2 mt-2">
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {booking.isResalePurchase && (
+                      <span className="inline-flex px-3 py-1 rounded-full text-[10px] font-black bg-orange-100 text-orange-800 border border-orange-200 items-center gap-1.5 uppercase tracking-widest shadow-sm">
+                        <TagIcon className="w-3 h-3" />
+                        Verified Resale Purchase
+                      </span>
+                    )}
                     {booking.isListed && (
                       <span className="inline-flex px-3 py-1 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 items-center gap-1.5 uppercase tracking-widest shadow-sm">
                         <TagIcon className="w-3 h-3" />
@@ -572,7 +763,7 @@ function BookingCard({
               <div className="flex items-center gap-4 bg-muted/50 p-3 rounded-xl border border-border/50 relative z-10 w-fit">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Ticket Type</p>
-                  <p className="font-bold text-foreground capitalize">{booking.tier || 'Regular'} Admission</p>
+                  <p className="font-bold text-foreground capitalize">{booking.tier || 'Standard'}</p>
                 </div>
                 <div className="w-px h-8 bg-border" />
                 <div>
@@ -595,16 +786,27 @@ function BookingCard({
                     <DownloadIcon className="w-4 h-4" />
                     Download Tickets
                   </Button>
-                  {!booking.isListed && (
+                  {hasUnlisted && (
                     <Button
-                      onClick={() => setShowResaleDialog(true)}
+                      onClick={openResaleDialog}
                       variant="secondary"
-                      className="gap-2 h-10 rounded-xl font-bold text-xs uppercase tracking-wider bg-orange-600 hover:bg-orange-700 text-white border-none shadow-md shadow-orange-600/20"
+                      className="gap-2 h-10 rounded-xl font-bold text-xs uppercase tracking-wider bg-orange-600 hover:bg-orange-700 text-white border-none shadow-md shadow-orange-600/20 cursor-pointer"
                     >
                       <TagIcon className="w-4 h-4" />
-                      Resell
+                      Resell {unlistedTickets.length > 1 ? `(${unlistedTickets.length})` : 'Ticket'}
                     </Button>
                   )}
+                  {listedTickets.map((t) => (
+                    <Button
+                      key={t.resaleListingId}
+                      variant="outline"
+                      disabled={cancellingId === t.resaleListingId}
+                      onClick={() => t.resaleListingId && handleCancelResale(t.resaleListingId)}
+                      className="gap-2 h-10 rounded-xl font-bold text-xs uppercase tracking-wider border-orange-400 text-orange-600 hover:bg-orange-50 cursor-pointer"
+                    >
+                      {cancellingId === t.resaleListingId ? 'Cancelling...' : `Cancel Resale (${t.ticketNumber.split('-').pop()})`}
+                    </Button>
+                  ))}
                 </>
               )}
               {status === 'pending' && (
@@ -637,23 +839,44 @@ function BookingCard({
         {/* Right Side: Stub & QR */}
         <div className="md:w-64 bg-muted/30 p-6 flex flex-col items-center justify-center relative border-l border-border/10">
           <div className="text-center w-full">
+            {booking.isResalePurchase ? (
+              <div className="mb-3">
+                <span className="inline-flex px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-orange-100 text-orange-800 border border-orange-200">
+                  Verified Resale QR
+                </span>
+              </div>
+            ) : null}
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Admit {booking.quantity}</p>
 
-            <div className="bg-white p-3.5 rounded-2xl shadow-sm mx-auto mb-4 border border-border/50 hover:shadow-md transition-shadow">
-                <div className="flex flex-wrap justify-center gap-3">
-                  {(booking.ticketTokens || [null]).map((token, index) => token ? (
-                    <div key={token} className="text-center">
-                      <QRCodeSVG value={`${window.location.origin}/tickets/verify/${token}`} size={110} bgColor="#ffffff" fgColor="#000000" level="Q" includeMargin className="mx-auto" />
-                      <p className="mt-1 text-[9px] font-bold text-muted-foreground">Ticket {index + 1}</p>
+            <div className="flex flex-col gap-3 items-center">
+              {(tickets.length > 0 ? tickets : (booking.ticketTokens || []).map((tok, i) => ({
+                id: i,
+                ticketNumber: booking.ticketNumbers?.[i] || `Ticket ${i + 1}`,
+                verificationToken: tok || '',
+                status: 'VALID',
+                listedForResale: false,
+                resaleListingId: null,
+              } as TicketItem))).map((ticket: TicketItem, index: number) => (
+                <div key={ticket.id} className="w-full">
+                  {ticket.listedForResale ? (
+                    <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 flex flex-col items-center gap-2">
+                      <TagIcon className="w-7 h-7 text-orange-500" />
+                      <p className="text-[10px] font-black text-orange-700 uppercase tracking-widest text-center">Listed for Resale</p>
+                      <p className="text-[9px] text-orange-500 text-center">QR hidden while listed</p>
+                      <p className="text-[9px] font-mono text-muted-foreground mt-1">{ticket.ticketNumber}</p>
                     </div>
-                  ) : null)}
+                  ) : ticket.verificationToken ? (
+                    <div className="bg-white p-3 rounded-2xl shadow-sm border border-border/50 hover:shadow-md transition-shadow">
+                      <QRCodeSVG value={`${typeof window !== 'undefined' ? window.location.origin : ''}/tickets/verify/${ticket.verificationToken}`} size={100} bgColor="#ffffff" fgColor="#000000" level="Q" includeMargin className="mx-auto" />
+                      <p className="mt-1 text-[9px] font-bold text-muted-foreground text-center">Ticket {index + 1} · {ticket.ticketNumber}</p>
+                      {booking.isResalePurchase && (
+                        <p className="text-[8px] font-bold text-orange-600 text-center uppercase tracking-widest mt-0.5">Resale Scan QR</p>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
+              ))}
             </div>
-
-            <p className="text-xs font-mono font-bold text-foreground bg-muted py-1.5 px-3 rounded-lg border border-border/50">
-              {booking.id.split('-').pop()}
-            </p>
-
             <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-4">
               To be scanned at the entrance.
             </p>

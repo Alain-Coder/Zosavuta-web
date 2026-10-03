@@ -11,17 +11,16 @@ import {
   MapPinIcon,
   QrCodeIcon,
   ChevronRightIcon,
-  StarIcon,
   ClockIcon,
   BellIcon,
-  TrophyIcon,
   StoreIcon,
   TagIcon,
 } from 'lucide-react';
 // import { getBookingsByUser as getBusBookingsByUser } from '@/lib/bus/api';
 import { useAuth } from '@/hooks/use-auth';
-import { calculateTotalPoints } from '@/lib/legacy-points';
-import { canOrganize, isAdmin, UserRole } from '@/lib/roles';
+import { canOrganize, isAdmin, canAttend, UserRole } from '@/lib/roles';
+import { auth } from '@/lib/firebase';
+import { signOut } from 'firebase/auth';
 import { toast } from 'sonner';
 import SellerFinancePanel from '@/components/seller-finance-panel';
 
@@ -71,7 +70,6 @@ export default function AttendeeDashboard() {
   const [stats, setStats] = useState({
     totalTickets: 0,
     upcomingEvents: 0,
-    legacyPoints: 0,
   });
 
   const formatShortDate = (dateString: string) => {
@@ -104,14 +102,60 @@ export default function AttendeeDashboard() {
       return;
     }
 
-    const fetchDashboardData = async () => {
+    let isCancelled = false;
+
+    const verifyAndLoadDashboard = async () => {
       try {
         setUserName(user.displayName?.split(' ')[0] || 'Member');
 
-        const [ordersRes, eventsRes, pointsRes] = await Promise.all([
+        // 1. Strictly verify user role first
+        let roleRes: Response;
+        try {
+          roleRes = await fetch(`/api/users/${user.uid}`);
+        } catch {
+          toast.error('Network error: Unable to verify account permissions.');
+          await signOut(auth);
+          router.replace('/auth');
+          return;
+        }
+
+        if (!roleRes.ok) {
+          toast.error('Unable to verify account permissions from database. Please sign in again.');
+          await signOut(auth);
+          router.replace('/auth');
+          return;
+        }
+
+        const roleData = await roleRes.json();
+        const role = roleData?.role as UserRole | 'operator';
+
+        if (isAdmin(role)) {
+          router.replace('/admin');
+          return;
+        }
+
+        if (role === 'organizer') {
+          router.replace('/organizer/dashboard');
+          return;
+        }
+
+        if (role === 'operator') {
+          router.replace('/operator/dashboard');
+          return;
+        }
+
+        if (!canAttend(role)) {
+          router.replace(canOrganize(role) ? '/organizer/dashboard' : '/auth');
+          return;
+        }
+
+        if (isCancelled) return;
+        setUserRole(role);
+
+        // 2. Fetch attendee dashboard data only after role is verified as attendee
+        const [ordersRes, eventsRes] = await Promise.all([
           fetch(`/api/orders?userId=${user.uid}`),
           fetch('/api/events'),
-          fetch(`/api/points?userId=${user.uid}`),
         ]);
 
         const rawOrders = ordersRes.ok ? await ordersRes.json() : [];
@@ -124,116 +168,42 @@ export default function AttendeeDashboard() {
           ? rawEvents
           : rawEvents?.events || rawEvents?.data || [];
 
-        const pointsData = pointsRes.ok ? await pointsRes.json() : { totalPoints: 0 };
+        const confirmed = bookingsData.filter((b) => b.status === 'confirmed');
 
-        //         interface BusBooking {
-        //   id: string;
-        //   tripId?: string;
-        //   destination?: string;
-        //   status?: string;
-        //   seats?: number;
-        //   totalPrice?: number;
-        //   createdAt?: Date;
-        // }
+        if (!isCancelled) {
+          setUpcomingBookings(confirmed.slice(0, 3));
+          setFeaturedEvents(eventsData.filter((e) => e.ticketsAvailable > 0).slice(0, 3));
 
-        // let busBookings: BusBooking[] = [];
-        // try {
-        //   busBookings = await getBusBookingsByUser(user.uid) as BusBooking[];
-        // } catch {
-        //   // non-critical
-        // }
+          const notifs: NotificationItem[] = [];
+          for (const b of bookingsData.filter((x) => x.status === 'confirmed').slice(0, 3)) {
+            notifs.push({
+              id: `ticket-${b.id}`,
+              icon: 'ticket',
+              title: `Your ticket for ${b.eventTitle} is confirmed.`,
+              time: relativeTime(b.createdAt),
+            });
+          }
+          setNotifications(notifs.slice(0, 5));
 
-        //         const normalizedBusBookings: Booking[] = busBookings.map((b) => ({
-        //           id: String(b.id),
-        //           eventTitle: `Bus: ${b.tripId ?? 'Trip'}`,
-        //           eventDate: b.createdAt ? new Date(b.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        //           eventTime: '',
-        //           eventLocation: String(b.destination ?? ''),
-        //           eventImage: '/zosavuta.png',
-        //           status: String(b.status ?? 'confirmed'),
-        //           quantity: Number(b.seats ?? 1),
-        //           totalAmount: Number(b.totalPrice ?? 0),
-        //           busTransport: true,
-        //           createdAt: b.createdAt ? new Date(b.createdAt) : undefined,
-        //         }));
-
-        //         const combined = [...bookingsData, ...normalizedBusBookings];
-        const combined = bookingsData;
-        const confirmed = combined.filter((b) => b.status === 'confirmed');
-
-        setUpcomingBookings(confirmed.slice(0, 3));
-        setFeaturedEvents(eventsData.filter((e) => e.ticketsAvailable > 0).slice(0, 3));
-
-        const notifs: NotificationItem[] = [];
-        for (const b of bookingsData.filter((x) => x.status === 'confirmed').slice(0, 3)) {
-          notifs.push({
-            id: `ticket-${b.id}`,
-            icon: 'ticket',
-            title: `Your ticket for ${b.eventTitle} is confirmed.`,
-            time: relativeTime(b.createdAt),
+          const totalTicketsCount = bookingsData.reduce((acc, cur) => acc + (cur.quantity ?? 1), 0);
+          setStats({
+            totalTickets: totalTicketsCount,
+            upcomingEvents: confirmed.length,
           });
+          setLoading(false);
         }
-        // for (const b of normalizedBusBookings.slice(0, 2)) {
-        //   notifs.push({
-        //     id: `bus-${b.id}`,
-        //     icon: 'bus',
-        //     title: `Bus booking ${b.id.slice(-6).toUpperCase()} is confirmed.`,
-        //     time: relativeTime(b.createdAt),
-        //   });
-        // }
-        const pts = calculateTotalPoints(
-          bookingsData.map((b, i) => ({
-            totalAmount: b.totalAmount ?? 0,
-            tier: b.tier,
-            busTransport: b.busTransport,
-            isFirstBooking: i === 0,
-          }))
-        );
-        if (pts > 0) {
-          notifs.push({
-            id: 'points',
-            icon: 'points',
-            title: `You have ${pts.toLocaleString()} Legacy Points available.`,
-            time: 'Updated today',
-          });
-        }
-        setNotifications(notifs.slice(0, 5));
-
-        const totalTicketsCount = combined.reduce((acc, cur) => acc + (cur.quantity ?? 1), 0);
-        setStats({
-          totalTickets: totalTicketsCount,
-          upcomingEvents: confirmed.length,
-          legacyPoints: pointsData.totalPoints ?? pts,
-        });
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
         toast.error('Failed to load dashboard data');
-      } finally {
-        setLoading(false);
+        if (!isCancelled) setLoading(false);
       }
     };
 
-    const fetchUserRole = async () => {
-      try {
-        const res = await fetch(`/api/users/${user.uid}`);
-        if (res.ok) {
-          const data = await res.json();
-          const role = data.role ?? 'customer';
-          if (isAdmin(role)) {
-            router.replace('/admin');
-            return;
-          }
-          setUserRole(role);
-        } else {
-          setUserRole('customer');
-        }
-      } catch {
-        setUserRole('customer');
-      }
-    };
+    verifyAndLoadDashboard();
 
-    fetchDashboardData();
-    fetchUserRole();
+    return () => {
+      isCancelled = true;
+    };
   }, [user, authLoading, router]);
 
   if (loading || authLoading) {
@@ -283,7 +253,7 @@ export default function AttendeeDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         <Card className="bg-primary/5 border-none shadow-none">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
@@ -295,20 +265,6 @@ export default function AttendeeDashboard() {
             </div>
           </CardContent>
         </Card>
-
-        <Link href="/legacy-points" className="block">
-          <Card className="bg-secondary/5 border-none shadow-none hover:shadow-md transition-shadow cursor-pointer group h-full">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-secondary/10 flex items-center justify-center text-secondary group-hover:scale-110 transition-transform">
-                <TrophyIcon className="w-6 h-6" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-muted-foreground font-medium">Legacy Points</p>
-                <h3 className="text-2xl font-bold">{stats.legacyPoints.toLocaleString()}</h3>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
 
         <Card className="bg-accent/5 border-none shadow-none">
           <CardContent className="p-6 flex items-center gap-4">
@@ -441,9 +397,7 @@ export default function AttendeeDashboard() {
                         n.icon === 'bus' ? 'bg-blue-100 text-blue-600' :
                           'bg-green-100 text-green-600'
                         }`}>
-                        {n.icon === 'points' ? <StarIcon className="w-5 h-5" /> :
-                          n.icon === 'bus' ? <TagIcon className="w-5 h-5" /> :
-                            <BellIcon className="w-5 h-5" />}
+                        <BellIcon className="w-5 h-5" />
                       </div>
                       <div>
                         <p className="text-sm font-medium">{n.title}</p>

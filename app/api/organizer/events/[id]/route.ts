@@ -20,7 +20,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const current = await query<any>('SELECT * FROM events WHERE id = ? AND organizerId = ?', [eventId, user.uid]);
   if (!current.length) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   const body = await req.json();
-  const allowedStatuses = ['active', 'draft', 'sold_out', 'cancelled'];
+  const allowedStatuses = ['active', 'draft', 'sold_out', 'cancelled', 'expired'];
   const status = body.status === undefined ? current[0].status : String(body.status);
   if (!allowedStatuses.includes(status)) return NextResponse.json({ error: 'Invalid event status' }, { status: 400 });
   const fields = {

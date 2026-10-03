@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS events (
   ticketsAvailable INT           NOT NULL DEFAULT 0,
   ticketTypes      JSON,
   organizerId      VARCHAR(128)  NOT NULL,
-  status           ENUM('active','draft','sold_out','cancelled') NOT NULL DEFAULT 'active',
+  status           ENUM('active','draft','sold_out','cancelled','expired') NOT NULL DEFAULT 'active',
   busTransport     TINYINT(1)   NOT NULL DEFAULT 0,
   seatingChart     TINYINT(1)   NOT NULL DEFAULT 0,
   createdAt        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -333,5 +333,17 @@ CREATE TABLE IF NOT EXISTS contact_messages (
   createdAt DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_contact_messages_email (email),
   INDEX idx_contact_messages_status (status)
+) ENGINE=InnoDB;
+
+-- ─── Newsletter Subscribers ───
+CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+  id             INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  email          VARCHAR(255) NOT NULL UNIQUE,
+  status         ENUM('active','unsubscribed') NOT NULL DEFAULT 'active',
+  source         VARCHAR(64)  NOT NULL DEFAULT 'footer',
+  subscribedAt   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  unsubscribedAt DATETIME,
+  INDEX idx_newsletter_email  (email),
+  INDEX idx_newsletter_status (status)
 ) ENGINE=InnoDB;
 

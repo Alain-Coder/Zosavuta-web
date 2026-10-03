@@ -60,22 +60,41 @@ export default getPool();
 
 export function formatRowToEvent(row: any): Event {
   let formattedDate = row.date;
-if (row.date instanceof Date) {
-  const day = String(row.date.getDate()).padStart(2, '0');
-  const month = row.date.toLocaleString('en-GB', { month: 'short' });
-  const year = row.date.getFullYear();
-  formattedDate = `${day} ${month} ${year}`;
-} else if (typeof row.date === 'string' && row.date.includes('T')) {
-  const dateObj = new Date(row.date);
-  if (!isNaN(dateObj.getTime())) {
-    const day = String(dateObj.getDate()).padStart(2, '0');
-    const month = dateObj.toLocaleString('en-GB', { month: 'short' });
-    const year = dateObj.getFullYear();
+  if (row.date instanceof Date) {
+    const day = String(row.date.getDate()).padStart(2, '0');
+    const month = row.date.toLocaleString('en-GB', { month: 'short' });
+    const year = row.date.getFullYear();
     formattedDate = `${day} ${month} ${year}`;
-  } else {
-    formattedDate = row.date.split('T')[0];
+  } else if (typeof row.date === 'string' && row.date.includes('T')) {
+    const dateObj = new Date(row.date);
+    if (!isNaN(dateObj.getTime())) {
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const month = dateObj.toLocaleString('en-GB', { month: 'short' });
+      const year = dateObj.getFullYear();
+      formattedDate = `${day} ${month} ${year}`;
+    } else {
+      formattedDate = row.date.split('T')[0];
+    }
   }
-}
+
+  const rawPrice = typeof row.price === 'number' ? row.price : parseFloat(row.price || '0');
+  // Only return organizer-configured ticket types — no auto-calculation for missing tiers
+  let parsedTicketTypes: Array<{ name: string; price: number }> = [];
+  if (typeof row.ticketTypes === 'string') {
+    try {
+      parsedTicketTypes = JSON.parse(row.ticketTypes);
+    } catch {
+      parsedTicketTypes = [];
+    }
+  } else if (Array.isArray(row.ticketTypes)) {
+    parsedTicketTypes = row.ticketTypes;
+  }
+
+  // Legacy fallback: events with no stored ticketTypes get a single Standard entry
+  if (!Array.isArray(parsedTicketTypes) || parsedTicketTypes.length === 0) {
+    const basePrice = rawPrice > 0 ? rawPrice : 3500;
+    parsedTicketTypes = [{ name: 'Standard', price: basePrice }];
+  }
 
   return {
     id: String(row.id),
@@ -88,7 +107,7 @@ if (row.date instanceof Date) {
     location: row.location || '',
     venue: row.venue || '',
     image: row.image || '/images/hero-bg.jpg',
-    price: typeof row.price === 'number' ? row.price : parseFloat(row.price || '0'),
+    price: rawPrice,
     ticketsTotal: parseInt(row.ticketsTotal || '0', 10),
     ticketsAvailable: parseInt(row.ticketsAvailable || '0', 10),
     organizerId: row.organizerId || '',
@@ -96,7 +115,7 @@ if (row.date instanceof Date) {
     status: row.status || 'active',
     busTransport: Boolean(row.busTransport),
     seatingChart: Boolean(row.seatingChart),
-    ticketTypes: typeof row.ticketTypes === 'string' ? (() => { try { return JSON.parse(row.ticketTypes); } catch { return []; } })() : (row.ticketTypes || []),
+    ticketTypes: parsedTicketTypes,
     createdAt: row.createdAt ? String(row.createdAt) : undefined,
   };
 }
@@ -159,14 +178,39 @@ export async function getEventByIdFromDB(id: string | number): Promise<Event | n
 }
 
 export interface ContactMessage {
+  id?: number;
   name: string;
   email: string;
   subject: string;
   message: string;
+  status?: 'unread' | 'read' | 'resolved';
+  createdAt?: string;
+}
+
+export async function ensureContactMessagesTable(): Promise<void> {
+  try {
+    const dbPool = getPool();
+    await dbPool.execute(`
+      CREATE TABLE IF NOT EXISTS contact_messages (
+        id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        subject VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        status ENUM('unread','read','resolved') NOT NULL DEFAULT 'unread',
+        createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_contact_messages_email (email),
+        INDEX idx_contact_messages_status (status)
+      ) ENGINE=InnoDB;
+    `);
+  } catch (error) {
+    console.error('Error ensuring contact_messages table exists:', error);
+  }
 }
 
 export async function saveContactMessage(msg: ContactMessage): Promise<boolean> {
   try {
+    await ensureContactMessagesTable();
     const dbPool = getPool();
 
     await dbPool.execute(
@@ -179,4 +223,125 @@ export async function saveContactMessage(msg: ContactMessage): Promise<boolean> 
     return false;
   }
 }
+
+export interface GetContactMessagesParams {
+  search?: string;
+  status?: string;
+  page?: number;
+  limit?: number;
+}
+
+export async function getContactMessages(params: GetContactMessagesParams = {}): Promise<{
+  messages: ContactMessage[];
+  total: number;
+  page: number;
+  limit: number;
+}> {
+  await ensureContactMessagesTable();
+  const dbPool = getPool();
+  const page = Math.max(1, Number(params.page) || 1);
+  const limit = Math.max(1, Math.min(100, Number(params.limit) || 10));
+  const offset = (page - 1) * limit;
+
+  const whereClauses: string[] = [];
+  const queryParams: any[] = [];
+
+  if (params.status && params.status !== 'all') {
+    whereClauses.push(`status = ?`);
+    queryParams.push(params.status);
+  }
+
+  if (params.search && params.search.trim()) {
+    const searchPattern = `%${params.search.trim()}%`;
+    whereClauses.push(`(name LIKE ? OR email LIKE ? OR subject LIKE ? OR message LIKE ?)`);
+    queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern);
+  }
+
+  const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+  const countSql = `SELECT COUNT(*) as total FROM contact_messages ${whereSql}`;
+  const [countRows] = await dbPool.execute(countSql, queryParams);
+  const total = Number((countRows as any)?.[0]?.total || 0);
+
+  const dataSql = `SELECT * FROM contact_messages ${whereSql} ORDER BY createdAt DESC LIMIT ? OFFSET ?`;
+  const [rows] = await dbPool.query(dataSql, [...queryParams, limit, offset]);
+
+  const messages: ContactMessage[] = Array.isArray(rows)
+    ? rows.map((r: any) => ({
+      id: Number(r.id),
+      name: String(r.name || ''),
+      email: String(r.email || ''),
+      subject: String(r.subject || ''),
+      message: String(r.message || ''),
+      status: (r.status as 'unread' | 'read' | 'resolved') || 'unread',
+      createdAt: r.createdAt ? String(r.createdAt) : undefined,
+    }))
+    : [];
+
+  return { messages, total, page, limit };
+}
+
+export async function getContactMessagesStats(): Promise<{
+  total: number;
+  unread: number;
+  read: number;
+  resolved: number;
+}> {
+  await ensureContactMessagesTable();
+  try {
+    const dbPool = getPool();
+    const [rows] = await dbPool.execute(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'unread' THEN 1 ELSE 0 END) as unread,
+        SUM(CASE WHEN status = 'read' THEN 1 ELSE 0 END) as readCount,
+        SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) as resolved
+      FROM contact_messages
+    `);
+    const r = (rows as any)?.[0] || {};
+    return {
+      total: Number(r.total || 0),
+      unread: Number(r.unread || 0),
+      read: Number(r.readCount || 0),
+      resolved: Number(r.resolved || 0),
+    };
+  } catch (error) {
+    console.error('Error getting contact message stats:', error);
+    return { total: 0, unread: 0, read: 0, resolved: 0 };
+  }
+}
+
+export async function updateContactMessageStatus(
+  id: number | string,
+  status: 'unread' | 'read' | 'resolved'
+): Promise<boolean> {
+  await ensureContactMessagesTable();
+  try {
+    const dbPool = getPool();
+    const [result] = await dbPool.execute(
+      `UPDATE contact_messages SET status = ? WHERE id = ?`,
+      [status, id]
+    );
+    return (result as ResultSetHeader).affectedRows > 0;
+  } catch (error) {
+    console.error('Error updating contact message status:', error);
+    return false;
+  }
+}
+
+export async function deleteContactMessage(id: number | string): Promise<boolean> {
+  await ensureContactMessagesTable();
+  try {
+    const dbPool = getPool();
+    const [result] = await dbPool.execute(
+      `DELETE FROM contact_messages WHERE id = ?`,
+      [id]
+    );
+    return (result as ResultSetHeader).affectedRows > 0;
+  } catch (error) {
+    console.error('Error deleting contact message:', error);
+    return false;
+  }
+}
+
 
