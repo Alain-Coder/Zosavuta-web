@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, execute } from '@/lib/db';
 import { getAuthUser, canOrganizeEvents } from '@/lib/auth-server';
 import { logFinancialAudit } from '@/lib/audit';
+import { checkOrganizerIsApproved } from '@/lib/organizer-verification';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getAuthUser(req);
@@ -20,9 +21,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const current = await query<any>('SELECT * FROM events WHERE id = ? AND organizerId = ?', [eventId, user.uid]);
   if (!current.length) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   const body = await req.json();
-  const allowedStatuses = ['active', 'draft', 'sold_out', 'cancelled', 'expired'];
+  const allowedStatuses = ['active', 'draft', 'sold_out', 'cancelled', 'completed'];
   const status = body.status === undefined ? current[0].status : String(body.status);
   if (!allowedStatuses.includes(status)) return NextResponse.json({ error: 'Invalid event status' }, { status: 400 });
+
+  if (status === 'active') {
+    const isApproved = await checkOrganizerIsApproved(user.uid);
+    if (!isApproved) {
+      return NextResponse.json(
+        { error: 'Organizer verification required. Your account must be approved before activating or publishing events.' },
+        { status: 403 }
+      );
+    }
+  }
   const fields = {
     title: String(body.title ?? current[0].title).trim(),
     description: body.description ?? current[0].description,
@@ -34,9 +45,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     venue: body.venue ?? current[0].venue,
     image: body.image ?? current[0].image,
     status,
+    ticketTypes: (() => {
+      if (body.ticketTypes === undefined) return current[0].ticketTypes;
+      return Array.isArray(body.ticketTypes) ? JSON.stringify(body.ticketTypes) : body.ticketTypes;
+    })(),
+    price: body.price !== undefined ? Number(body.price) : Number(current[0].price),
   };
   if (!fields.title || !fields.date || !fields.time || !fields.location || !fields.venue) return NextResponse.json({ error: 'Title, date, time, location and venue are required' }, { status: 400 });
-  await execute(`UPDATE events SET title = ?, description = ?, fullDescription = ?, category = ?, date = ?, time = ?, location = ?, venue = ?, image = ?, status = ? WHERE id = ? AND organizerId = ?`, [fields.title, fields.description, fields.fullDescription, fields.category, fields.date, fields.time, fields.location, fields.venue, fields.image, fields.status, eventId, user.uid]);
+  await execute(
+    `UPDATE events SET title = ?, description = ?, fullDescription = ?, category = ?, date = ?, time = ?, location = ?, venue = ?, image = ?, status = ?, ticketTypes = ?, price = ? WHERE id = ? AND organizerId = ?`,
+    [fields.title, fields.description, fields.fullDescription, fields.category, fields.date, fields.time, fields.location, fields.venue, fields.image, fields.status, fields.ticketTypes, fields.price, eventId, user.uid]
+  );
   await logFinancialAudit({ actorId: user.uid, actorRole: user.role, action: status === 'cancelled' ? 'EVENT_CANCELLED' : 'EVENT_UPDATED', entityType: 'EVENT', entityId: String(eventId), oldValues: current[0], newValues: fields });
   return NextResponse.json({ success: true, event: { ...current[0], ...fields } });
 }

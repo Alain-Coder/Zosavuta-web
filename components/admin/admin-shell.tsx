@@ -14,11 +14,14 @@ import { ShieldCheckIcon } from 'lucide-react';
 const SECTION_TITLES: Record<string, string> = {
   overview: 'Dashboard Overview',
   approvals: 'Ticket Approvals',
+  verifications: 'Organizer KYC Verifications',
   payouts: 'Financial Payouts',
+  featured: 'Featured Events',
   reports: 'Financial Reports',
   refunds: 'Refunds & Reversals',
   audit: 'Audit Trail',
   messages: 'Contact Messages',
+  newsletter: 'Newsletter Subscribers',
 };
 
 function AdminHeader() {

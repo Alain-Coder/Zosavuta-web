@@ -9,13 +9,13 @@ export default function TermsPage() {
   return (
     <div className="min-h-screen bg-background pb-24">
       {/* Header */}
-      <section className="relative bg-foreground py-16 text-white overflow-hidden">
+      <section className="relative bg-secondary py-16 text-white overflow-hidden">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <h1 className="text-4xl md:text-5xl font-black tracking-tighter uppercase mb-4">
             Terms of <span className="text-primary italic">Service</span>
           </h1>
           <p className="text-sm text-white/70 font-medium max-w-2xl leading-relaxed">
-            Effective Date: August 13, 2026. Please read these Terms of Service carefully before purchasing tickets or utilizing the Zosavuta event discovery platform.
+            Effective Date: October 7, 2026. Please read these Terms of Service carefully before purchasing tickets or utilizing the Zosavuta event discovery platform.
           </p>
         </div>
       </section>

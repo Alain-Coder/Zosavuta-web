@@ -8,10 +8,11 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { AlertCircle, ArrowLeftIcon, Eye, EyeOff, UserIcon, BriefcaseIcon, UsersIcon } from 'lucide-react';
+import { AlertCircle, ArrowLeftIcon, Eye, EyeOff, UserIcon, BriefcaseIcon, UsersIcon, CheckCircle2 } from 'lucide-react';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   updateProfile,
   setPersistence,
   browserLocalPersistence,
@@ -25,7 +26,7 @@ import { setSessionExpiry } from '@/lib/auth-session';
 import { getAuthHeaders } from '@/lib/auth-client';
 import type { UserRole } from '@/lib/roles';
 
-type AuthMode = 'signin' | 'signup';
+type AuthMode = 'signin' | 'signup' | 'forgot_password';
 type SignupRole = 'customer' | 'organizer' | 'customer_organizer';
 
 function AuthContent() {
@@ -42,6 +43,7 @@ function AuthContent() {
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const router = useRouter();
 
   const applyAuthPersistence = async () => {
@@ -76,9 +78,19 @@ function AuthContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setLoading(true);
 
     try {
+      if (mode === 'forgot_password') {
+        if (!email.trim()) {
+          throw new Error('Please enter your email address.');
+        }
+        await sendPasswordResetEmail(auth, email.trim());
+        setSuccess('Password reset link sent! Check your email inbox for instructions. If you don’t see the email, please check your Spam or Junk folder.');
+        return;
+      }
+
       await applyAuthPersistence();
 
       if (mode === 'signup') {
@@ -142,7 +154,11 @@ function AuthContent() {
             </div>
             <h1 className="text-3xl font-bold text-primary mb-2">Zosavuta</h1>
             <p className="text-muted-foreground">
-              {mode === 'signin' ? 'Sign in to your account' : 'Create your account'}
+              {mode === 'signin'
+                ? 'Sign in to your account'
+                : mode === 'signup'
+                  ? 'Create your account'
+                  : 'Reset your password'}
             </p>
           </div>
 
@@ -154,7 +170,35 @@ function AuthContent() {
               </div>
             )}
 
-            {mode === 'signup' ? (
+            {success && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-emerald-700">{success}</p>
+              </div>
+            )}
+
+            {mode === 'forgot_password' ? (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground text-center">
+                  Enter your account email address and we&apos;ll send you a password reset link.
+                </p>
+                <div>
+                  <Label htmlFor="email" className="text-sm font-medium">
+                    Email Address
+                  </Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={loading}
+                    className="mt-2"
+                    required
+                  />
+                </div>
+              </div>
+            ) : mode === 'signup' ? (
               <div className="space-y-5">
                 {/* Full Name & Email in 2 columns */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -298,9 +342,22 @@ function AuthContent() {
                 </div>
 
                 <div>
-                  <Label htmlFor="password" className="text-sm font-medium">
-                    Password
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password" className="text-sm font-medium">
+                      Password
+                    </Label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('forgot_password');
+                        setError('');
+                        setSuccess('');
+                      }}
+                      className="text-xs text-primary font-semibold hover:underline cursor-pointer"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
                   <div className="relative mt-2">
                     <Input
                       id="password"
@@ -342,23 +399,45 @@ function AuthContent() {
               disabled={loading}
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-11 text-base mt-2 cursor-pointer"
             >
-              {loading ? 'Loading...' : mode === 'signin' ? 'Sign In' : 'Create Account'}
+              {loading
+                ? 'Loading...'
+                : mode === 'signin'
+                  ? 'Sign In'
+                  : mode === 'signup'
+                    ? 'Create Account'
+                    : 'Send Reset Link'}
             </Button>
           </form>
 
           <div className="mt-6 text-center">
-            <p className="text-sm text-muted-foreground">
-              {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}
+            {mode === 'forgot_password' ? (
               <button
+                type="button"
                 onClick={() => {
-                  setMode(mode === 'signin' ? 'signup' : 'signin');
+                  setMode('signin');
                   setError('');
+                  setSuccess('');
                 }}
-                className="ml-2 text-primary font-semibold hover:underline cursor-pointer"
+                className="text-sm text-primary font-semibold hover:underline cursor-pointer inline-flex items-center gap-1.5"
               >
-                {mode === 'signin' ? 'Sign up' : 'Sign in'}
+                <ArrowLeftIcon className="h-4 w-4" /> Remember your password? Sign in
               </button>
-            </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode(mode === 'signin' ? 'signup' : 'signin');
+                    setError('');
+                    setSuccess('');
+                  }}
+                  className="ml-2 text-primary font-semibold hover:underline cursor-pointer"
+                >
+                  {mode === 'signin' ? 'Sign up' : 'Sign in'}
+                </button>
+              </p>
+            )}
           </div>
           <div className="mt-4 text-center">
             <button type="button" onClick={() => router.replace('/')} className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-primary">

@@ -48,7 +48,7 @@ export default function SupportPage() {
   return (
     <div className="min-h-screen bg-background pb-24">
       {/* Hero Header */}
-      <section className="relative bg-foreground py-20 overflow-hidden text-white">
+      <section className="relative bg-secondary py-20 overflow-hidden text-white">
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary via-background to-transparent pointer-events-none" />
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
           <h1 className="text-4xl md:text-6xl font-black tracking-tighter uppercase mb-4">

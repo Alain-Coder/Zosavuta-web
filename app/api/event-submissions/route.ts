@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, execute } from '@/lib/db';
 import { getAuthUser, hasAdminRole, ensureUserRecord, canOrganizeEvents } from '@/lib/auth-server';
+import { checkOrganizerIsApproved } from '@/lib/organizer-verification';
 
 export async function GET(req: NextRequest) {
   try {
@@ -80,6 +81,14 @@ export async function POST(req: NextRequest) {
     const user = await getAuthUser(req);
     if (!canOrganizeEvents(user)) {
       return NextResponse.json({ error: 'Forbidden — organizer role required' }, { status: 403 });
+    }
+
+    const isApproved = await checkOrganizerIsApproved(user.uid);
+    if (!isApproved) {
+      return NextResponse.json(
+        { error: 'Organizer verification required. Your account must be verified and approved before submitting or publishing events.' },
+        { status: 403 }
+      );
     }
 
     await ensureUserRecord(user);

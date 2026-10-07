@@ -95,6 +95,7 @@ export default function Footer() {
               <li><Link href="/about" className="text-secondary-foreground/70 hover:text-primary transition-colors">About Us</Link></li>
               <li><Link href="/support" className="text-secondary-foreground/70 hover:text-primary transition-colors">Contact Support</Link></li>
               <li><Link href="/terms" className="text-secondary-foreground/70 hover:text-primary transition-colors">Terms of Service</Link></li>
+              <li><Link href="/privacy" className="text-secondary-foreground/70 hover:text-primary transition-colors">Privacy Policy</Link></li>
             </ul>
           </div>
 
@@ -144,6 +145,11 @@ export default function Footer() {
 
         <div className="border-t border-white/5 pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-bold uppercase tracking-widest text-secondary-foreground/40">
           <p>&copy; {new Date().getFullYear()} ZOSAVUTA TICKETS. ALL RIGHTS RESERVED.</p>
+          <div className="flex items-center gap-4 text-[11px] font-semibold text-secondary-foreground/50 normal-case tracking-normal">
+            <Link href="/terms" className="hover:text-primary transition-colors">Terms of Service</Link>
+            <span>•</span>
+            <Link href="/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link>
+          </div>
         </div>
       </div>
     </footer>

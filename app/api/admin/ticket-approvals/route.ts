@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, execute } from '@/lib/db';
 import { getUserAdminRole } from '@/lib/security-controls';
+import { getAuthUser } from '@/lib/auth-server';
 
 export async function GET(req: NextRequest) {
   try {
     const adminId = req.headers.get('x-admin-id') || req.nextUrl.searchParams.get('adminId');
-    if (!adminId) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    if (!adminId) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+
+    // Verify the caller is actually authenticated via JWT, not just claiming an adminId
+    const authUser = await getAuthUser(req);
+    if (!authUser || authUser.uid !== adminId) {
+      return NextResponse.json({ error: 'Token mismatch or invalid token' }, { status: 401 });
     }
 
     const adminRole = await getUserAdminRole(adminId);
@@ -34,6 +39,12 @@ export async function POST(req: NextRequest) {
 
     if (!submissionId || !action || !adminId) {
       return NextResponse.json({ error: 'submissionId, action, and adminId are required' }, { status: 400 });
+    }
+
+    // Verify the caller's JWT token matches the claimed adminId
+    const authUser = await getAuthUser(req);
+    if (!authUser || authUser.uid !== adminId) {
+      return NextResponse.json({ error: 'Token mismatch or invalid token' }, { status: 401 });
     }
 
     const adminRole = await getUserAdminRole(adminId);

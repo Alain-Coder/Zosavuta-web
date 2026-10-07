@@ -49,7 +49,7 @@ interface EventItem {
   price: number;
   ticketsTotal: number;
   ticketsAvailable: number;
-  status: 'active' | 'draft' | 'sold_out' | 'cancelled' | 'expired';
+  status: 'active' | 'draft' | 'sold_out' | 'cancelled' | 'completed';
   physicalAllocated?: number;
   physicalSold?: number;
   physicalUsed?: number;
@@ -196,7 +196,7 @@ export default function OrganizerEventsPage() {
   const now = new Date();
   const isEnded = (event: EventItem) => {
     // Explicitly ended statuses
-    if (event.status === 'expired' || event.status === 'cancelled' || event.status === 'sold_out') return true;
+    if (event.status === 'completed' || event.status === 'cancelled' || event.status === 'sold_out') return true;
 
     // For active events, also check client-side if date has passed
     if (event.status === 'active') {
@@ -278,17 +278,28 @@ export default function OrganizerEventsPage() {
 
       {/* Events & Submissions Tabs */}
       <Tabs defaultValue="published" className="space-y-6">
-        <TabsList className="bg-muted p-1 rounded-xl">
-          <TabsTrigger value="published" className="rounded-lg font-bold text-xs uppercase tracking-wider">
-            Current Events ({currentEvents.length})
-          </TabsTrigger>
-          <TabsTrigger value="ended" className="rounded-lg font-bold text-xs uppercase tracking-wider">
-            Ended & Completed ({endedEvents.length})
-          </TabsTrigger>
-          <TabsTrigger value="submissions" className="rounded-lg font-bold text-xs uppercase tracking-wider">
-            Submissions & Approvals ({submissions.length})
-          </TabsTrigger>
-        </TabsList>
+        <div className="w-full overflow-x-auto scrollbar-hide -mx-1 px-1">
+          <TabsList className="bg-muted p-1 rounded-xl inline-flex w-max min-w-full sm:min-w-0 sm:w-auto">
+            <TabsTrigger
+              value="published"
+              className="rounded-lg font-bold text-xs uppercase tracking-wider whitespace-nowrap shrink-0"
+            >
+              Current Events ({currentEvents.length})
+            </TabsTrigger>
+            <TabsTrigger
+              value="ended"
+              className="rounded-lg font-bold text-xs uppercase tracking-wider whitespace-nowrap shrink-0"
+            >
+              Ended & Completed ({endedEvents.length})
+            </TabsTrigger>
+            <TabsTrigger
+              value="submissions"
+              className="rounded-lg font-bold text-xs uppercase tracking-wider whitespace-nowrap shrink-0"
+            >
+              Submissions & Approvals ({submissions.length})
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* Published Events Tab */}
         <TabsContent value="published" className="space-y-4">
@@ -340,35 +351,35 @@ export default function OrganizerEventsPage() {
                         </div>
                       </div>
 
-                      <div className="p-5 space-y-3">
+                      <div className="p-4 sm:p-5 space-y-3">
                         <div className="flex items-center justify-between">
                           <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider text-primary border-primary/30">
                             {event.category || 'Event'}
                           </Badge>
                         </div>
 
-                        <h3 className="text-xl font-black text-foreground leading-snug group-hover:text-primary transition-colors">
+                        <h3 className="text-lg sm:text-xl font-black text-foreground leading-snug group-hover:text-primary transition-colors">
                           {event.title}
                         </h3>
 
-                        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                        <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1 font-medium">
-                            <CalendarIcon className="w-4 h-4 text-primary" />
+                            <CalendarIcon className="w-4 h-4 text-primary shrink-0" />
                             {event.date} at {event.time}
                           </span>
                           <span className="flex items-center gap-1 font-medium">
-                            <MapPinIcon className="w-4 h-4 text-primary" />
+                            <MapPinIcon className="w-4 h-4 text-primary shrink-0" />
                             {event.venue}, {event.location}
                           </span>
                         </div>
 
                         {/* Tickets Sales Progress Bar */}
                         <div className="pt-2 space-y-1.5">
-                          <div className="flex justify-between text-xs font-bold">
-                            <span className="text-muted-foreground flex items-center gap-1">
+                          <div className="flex justify-between text-xs font-bold gap-2">
+                            <span className="text-muted-foreground flex items-center gap-1 shrink-0">
                               <TicketIcon className="w-3.5 h-3.5 text-primary" /> Ticket Sales
                             </span>
-                            <span className="text-foreground">
+                            <span className="text-foreground text-right">
                               {sold} / {event.ticketsTotal} ({percentSold}%)
                               {allocated > 0 && <span className="text-amber-600 font-normal ml-1">({allocated} allocated)</span>}
                             </span>
@@ -380,33 +391,58 @@ export default function OrganizerEventsPage() {
                       </div>
                     </div>
 
-                    <div className="p-5 pt-0 flex items-center justify-between border-t border-border/40 mt-4">
-                      <div>
-                        <span className="text-[10px] uppercase font-bold text-muted-foreground block">Ticket Price</span>
-                        <span className="text-lg font-black text-primary">MWK {Number(event.price).toLocaleString()}</span>
+                    {/* Footer: price + actions, responsive stacked layout on mobile */}
+                    <div className="p-4 sm:p-5 pt-0 border-t border-border/40 space-y-4">
+                      {/* Price row */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-muted-foreground block">Ticket Price</span>
+                          <span className="text-lg font-black text-primary">MWK {Number(event.price).toLocaleString()}</span>
+                        </div>
+
+                        {/* Icon actions (edit / delete) */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Link href={`/organizer/events/${event.id}/edit`} onClick={(e) => e.stopPropagation()}>
+                            <Button size="icon-sm" variant="outline" title="Edit event">
+                              <PencilIcon className="w-4 h-4" />
+                            </Button>
+                          </Link>
+                          <Button
+                            size="icon-sm"
+                            variant="outline"
+                            title="Delete or cancel event"
+                            onClick={(e) => { e.stopPropagation(); void handleDeleteEvent(event); }}
+                          >
+                            <Trash2Icon className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Link href={`/organizer/events/${event.id}/edit`} onClick={(e) => e.stopPropagation()}>
-                          <Button size="icon-sm" variant="outline" title="Edit event"><PencilIcon className="w-4 h-4" /></Button>
-                        </Link>
-                        <Button size="icon-sm" variant="outline" title="Delete or cancel event" onClick={(e) => { e.stopPropagation(); void handleDeleteEvent(event); }}><Trash2Icon className="w-4 h-4" /></Button>
+
+                      {/* Action buttons: full width on mobile, inline on larger screens */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                         <Button
                           size="sm"
-                          className="rounded-xl font-bold text-xs uppercase tracking-wider bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground gap-1.5 cursor-pointer"
+                          className="w-full sm:flex-1 rounded-xl font-bold text-xs uppercase tracking-wider bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground gap-1.5 cursor-pointer"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleOpenEventDetails(event);
                           }}
                         >
                           <EyeIcon className="w-4 h-4" />
-                          View Ticket Details →
+                          View Ticket Details
                         </Button>
+
+                        <Link
+                          href={`/organizer/physical-tickets?eventId=${event.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full sm:w-auto"
+                        >
+                          <Button size="sm" variant="outline" className="w-full rounded-xl font-bold text-xs gap-1.5 cursor-pointer">
+                            <TicketIcon className="w-4 h-4" />
+                            Physical Tickets
+                          </Button>
+                        </Link>
                       </div>
-                      <Link href={`/organizer/physical-tickets?eventId=${event.id}`} onClick={(e) => e.stopPropagation()}>
-                        <Button size="sm" variant="outline" className="rounded-xl font-bold text-xs gap-1.5 cursor-pointer">
-                          <TicketIcon className="w-4 h-4" /> Physical Tickets
-                        </Button>
-                      </Link>
                     </div>
                   </Card>
                 );
@@ -428,14 +464,12 @@ export default function OrganizerEventsPage() {
                 const endedImgUrl = event.image && event.image.trim() !== '' ? event.image : '/images/hero-bg.jpg';
                 const badgeLabel =
                   event.status === 'cancelled' ? 'CANCELLED' :
-                    event.status === 'expired' ? 'EXPIRED' :
-                      event.status === 'sold_out' ? 'SOLD OUT' :
-                        'COMPLETED';
+                    event.status === 'sold_out' ? 'SOLD OUT' :
+                      'COMPLETED';
                 const badgeClass =
                   event.status === 'cancelled' ? 'bg-red-700 text-white font-bold' :
-                    event.status === 'expired' ? 'bg-slate-600 text-white font-bold' :
-                      event.status === 'sold_out' ? 'bg-amber-600 text-white font-bold' :
-                        'bg-green-700 text-white font-bold';
+                    event.status === 'sold_out' ? 'bg-amber-600 text-white font-bold' :
+                      'bg-emerald-700 text-white font-bold';
                 const sold = Number(event.actualTicketsSold ?? Math.max(0, event.ticketsTotal - event.ticketsAvailable));
                 return (
                   <Card key={event.id} className="overflow-hidden border border-border bg-card flex flex-col justify-between opacity-90 hover:opacity-100 transition-opacity">
@@ -599,13 +633,13 @@ export default function OrganizerEventsPage() {
                 </Card>
                 <Card className="p-4 bg-muted/40 border border-border">
                   <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">Tickets Sold</span>
-                   <span className="text-xl font-black text-green-600 mt-1 block">
+                  <span className="text-xl font-black text-green-600 mt-1 block">
                     {(selectedEvent.actualTicketsSold ?? (selectedEvent.ticketsTotal - selectedEvent.ticketsAvailable)).toLocaleString()} Sold
                   </span>
                 </Card>
                 <Card className="p-4 bg-muted/40 border border-border">
                   <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">Gross Revenue</span>
-                   <span className="text-xl font-black text-primary mt-1 block">
+                  <span className="text-xl font-black text-primary mt-1 block">
                     MWK {Number(selectedEvent.actualRevenue ?? ((selectedEvent.ticketsTotal - selectedEvent.ticketsAvailable) * selectedEvent.price)).toLocaleString()}
                   </span>
                 </Card>

@@ -17,6 +17,7 @@ import {
   ShieldCheckIcon,
   MessageSquareIcon,
   MailIcon,
+  StarIcon,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -37,7 +38,7 @@ import { clearSessionExpiry } from '@/lib/auth-session';
 import { getAuthHeaders } from '@/lib/auth-client';
 import { Badge } from '@/components/ui/badge';
 
-export type AdminSection = 'overview' | 'approvals' | 'payouts' | 'reports' | 'refunds' | 'audit' | 'messages' | 'newsletter';
+export type AdminSection = 'overview' | 'approvals' | 'verifications' | 'payouts' | 'featured' | 'reports' | 'refunds' | 'audit' | 'messages' | 'newsletter';
 
 interface NavItem {
   section?: AdminSection;
@@ -55,6 +56,7 @@ export function AdminSidebar() {
 
   const currentSection = (searchParams?.get('section') as AdminSection) || 'overview';
   const [pendingApprovals, setPendingApprovals] = useState(0);
+  const [pendingVerifications, setPendingVerifications] = useState(0);
   const [pendingPayouts, setPendingPayouts] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [subscriberCount, setSubscriberCount] = useState(0);
@@ -74,6 +76,13 @@ export function AdminSidebar() {
           const data = await approvalsRes.json();
           const subs = Array.isArray(data.submissions) ? data.submissions : [];
           setPendingApprovals(subs.filter((s: any) => s.status === 'pending').length);
+        }
+
+        // Fetch pending KYC organizer verifications
+        const verifRes = await fetch('/api/admin/organizer-verifications', { headers });
+        if (verifRes.ok) {
+          const vData = await verifRes.json();
+          setPendingVerifications(vData.counts?.pending ?? 0);
         }
 
         // Fetch pending payout requests
@@ -146,11 +155,24 @@ export function AdminSidebar() {
       badgeCount: pendingApprovals,
     },
     {
+      section: 'verifications',
+      href: '/admin?section=verifications',
+      label: 'Organizer KYC',
+      icon: ShieldCheckIcon,
+      badgeCount: pendingVerifications,
+    },
+    {
       section: 'payouts',
       href: '/admin?section=payouts',
       label: 'Financial Payouts',
       icon: CreditCardIcon,
       badgeCount: pendingPayouts,
+    },
+    {
+      section: 'featured' as AdminSection,
+      href: '/admin?section=featured',
+      label: 'Featured Events',
+      icon: StarIcon,
     },
   ];
 

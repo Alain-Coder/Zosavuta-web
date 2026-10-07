@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { PlusIcon, TrendingUpIcon, TicketIcon, UserIcon, DollarSignIcon, ClockIcon } from 'lucide-react';
+import { PlusIcon, TrendingUpIcon, TicketIcon, UserIcon, DollarSignIcon, ClockIcon, ShieldAlertIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { getAuthHeaders } from '@/lib/auth-client';
 import { canOrganize, isAdmin } from '@/lib/roles';
@@ -48,6 +48,7 @@ export default function OrganizerDashboard() {
   const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [kycStatus, setKycStatus] = useState<string>('NOT_STARTED');
   const [events, setEvents] = useState<Event[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [stats, setStats] = useState({
@@ -100,10 +101,16 @@ export default function OrganizerDashboard() {
 
         const headers = await getAuthHeaders();
 
-        const [eventsRes, submissionsRes] = await Promise.all([
+        const [eventsRes, submissionsRes, kycRes] = await Promise.all([
           fetch('/api/organizer/events', { headers }),
           fetch('/api/event-submissions', { headers }),
+          fetch('/api/organizer/verification', { headers }),
         ]);
+
+        if (kycRes.ok) {
+          const kycData = await kycRes.json();
+          setKycStatus(kycData.verification?.status || 'NOT_STARTED');
+        }
 
         const rawEvents = eventsRes.ok ? await eventsRes.json() : [];
         const eventsData: Event[] = Array.isArray(rawEvents)
@@ -172,6 +179,32 @@ export default function OrganizerDashboard() {
             </Button>
           </Link>
         </div>
+
+        {/* KYC Verification Banner */}
+        {kycStatus !== 'APPROVED' && (
+          <Card className="p-4 bg-amber-500/10 border-amber-500/30 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <ShieldAlertIcon className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                  Organizer Verification Required
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                  {kycStatus === 'SUBMITTED' || kycStatus === 'UNDER_REVIEW'
+                    ? 'Your verification documents are currently under review. Publishing events and receiving payouts will activate upon approval.'
+                    : kycStatus === 'REJECTED'
+                      ? 'Your KYC verification was rejected. Please review feedback and submit updated documents.'
+                      : 'Complete KYC verification to publish events, sell tickets, and receive payouts.'}
+                </p>
+              </div>
+            </div>
+            <Button asChild size="sm" className="font-bold shrink-0">
+              <Link href="/organizer/verification">
+                {kycStatus === 'SUBMITTED' || kycStatus === 'UNDER_REVIEW' ? 'View KYC Status' : 'Verify Account →'}
+              </Link>
+            </Button>
+          </Card>
+        )}
 
         {stats.pendingSubmissions > 0 && (
           <Card className="p-4 bg-amber-50 border-amber-200 mb-8 flex gap-4">
@@ -264,8 +297,8 @@ function EventsTable({ events }: { events: Event[] }) {
           </thead>
           <tbody className="divide-y divide-border">
             {events.map((event) => {
-              const ticketsSold = event.ticketsTotal - event.ticketsAvailable;
-              const revenue = ticketsSold * Number(event.price);
+              const ticketsSold = Number(event.actualTicketsSold ?? Math.max(0, event.ticketsTotal - event.ticketsAvailable));
+              const revenue = Number(event.actualRevenue ?? ((event.ticketsTotal - event.ticketsAvailable) * Number(event.price)));
               return (
                 <tr key={event.id} className="hover:bg-muted/50 transition">
                   <td className="px-6 py-4 font-medium">{event.title}</td>
@@ -360,19 +393,20 @@ function SubmissionsTable({ submissions }: { submissions: Submission[] }) {
 
 function ChartsSection({ events }: { events: Event[] }) {
   const chartData = events.map((e) => {
-    const ticketsSold = e.ticketsTotal - e.ticketsAvailable;
-    const revenue = ticketsSold * Number(e.price);
-    return { name: e.title, revenue };
+    const ticketsSold = Number(e.actualTicketsSold ?? Math.max(0, e.ticketsTotal - e.ticketsAvailable));
+    const revenue = Number(e.actualRevenue ?? ((e.ticketsTotal - e.ticketsAvailable) * Number(e.price)));
+    return { name: e.title, revenue, ticketsSold };
   });
   return (
     <Card className="p-4 mt-8 bg-white/30 backdrop-blur-lg border border-white/20 rounded-xl shadow-lg">
-      <h2 className="text-lg font-semibold mb-4 text-gray-800">Revenue by Event</h2>
+      <h2 className="text-lg font-semibold mb-4 text-gray-800">Revenue and Tickets Sold by Event</h2>
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
           <XAxis dataKey="name" />
           <YAxis />
           <Tooltip />
           <Bar dataKey="revenue" fill="#6366F1" />
+          <Bar dataKey="ticketsSold" fill="#82ca9d" />
         </BarChart>
       </ResponsiveContainer>
     </Card>

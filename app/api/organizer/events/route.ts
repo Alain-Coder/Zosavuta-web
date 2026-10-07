@@ -6,11 +6,11 @@ export async function GET(req: NextRequest) {
   const user = await getAuthUser(req);
   if (!canOrganizeEvents(user)) return NextResponse.json({ error: 'Organizer access is required' }, { status: 403 });
 
-  // Auto-expire: mark active events whose date+time has passed as 'expired'
+  // Auto-complete: mark active events whose date+time has passed as 'completed'
   // (excludes sold_out and cancelled — those keep their own status)
   await execute(
     `UPDATE events
-     SET status = 'expired'
+     SET status = 'completed'
      WHERE organizerId = ?
      AND (status = 'active' OR status = '' OR status IS NULL)
      AND TIMESTAMP(date, time) < NOW()`,

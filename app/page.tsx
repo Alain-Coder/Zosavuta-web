@@ -6,10 +6,10 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { TicketIcon, MapPinIcon, ShieldCheckIcon, PlusIcon, SearchIcon, FilterIcon, CalendarIcon, Sparkles, Loader2, Send, CheckCircle2 } from 'lucide-react';
+import { TicketIcon, MapPinIcon, ShieldCheckIcon, PlusIcon, SearchIcon, FilterIcon, CalendarIcon, Sparkles, Loader2, Send, CheckCircle2, SmartphoneIcon, RefreshCwIcon, HeartHandshakeIcon } from 'lucide-react';
 import EventCard from '@/components/event-card';
 import CategoryChips from '@/components/category-chips';
-import { Event } from '@/lib/db';
+import type { Event } from '@/types/event';
 import { Input } from '@/components/ui/input';
 
 export default function HomePage() {
@@ -124,8 +124,13 @@ export default function HomePage() {
     );
   }
 
-  const featuredEvents = filteredEvents.slice(0, 3);
-  const remainingEvents = filteredEvents.slice(3);
+  // Admin-controlled featured events; fall back to first 3 if none are marked
+  const adminFeatured = filteredEvents.filter((e) => e.isFeatured);
+  const featuredEvents = adminFeatured.length > 0 ? adminFeatured : filteredEvents.slice(0, 3);
+  // remainingEvents = everything not in featured set
+  const featuredIds = new Set(featuredEvents.map((e) => e.id));
+  const remainingEvents = filteredEvents.filter((e) => !featuredIds.has(e.id));
+
 
   return (
     <>
@@ -134,16 +139,14 @@ export default function HomePage() {
         {/* Background Pattern/Overlay */}
         <div className="absolute inset-0 z-0 opacity-40">
           <div className="absolute inset-0 bg-gradient-to-r from-foreground via-foreground/80 to-transparent" />
-          {featuredEvents[0] && (
-            <Image
-              src={featuredEvents[0].image}
-              alt="Hero Background"
-              fill
-              className="object-cover blur-sm scale-105"
-              sizes="100vw"
-              priority
-            />
-          )}
+          <Image
+            src="/banner1.png"
+            alt="Hero Background"
+            fill
+            className="object-cover scale-105"
+            sizes="100vw"
+            priority
+          />
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
@@ -313,7 +316,7 @@ export default function HomePage() {
                 </div>
                 <h3 className="text-3xl font-bold mb-4">I want to attend</h3>
                 <p className="text-muted-foreground mb-8 text-lg">
-                  Browse thousands of events and secure your tickets.
+                  Browse thousands of events and securely purchase your tickets. You can also explore the ticket resale marketplace to find tickets from other attendees or resell your own tickets when your plans change.
                 </p>
                 <Link href="#explore">
                   <Button size="lg" className="w-full text-lg h-14 bg-primary hover:bg-primary/90 text-primary-foreground">
@@ -322,25 +325,6 @@ export default function HomePage() {
                 </Link>
               </div>
               <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-colors" />
-            </Card>
-
-            {/* Customer Organizer Path */}
-            <Card className="group relative overflow-hidden p-8 border-2 border-secondary/10 hover:border-secondary/40 transition-all duration-300 bg-gradient-to-br from-card to-secondary/5">
-              <div className="relative z-10">
-                <div className="w-16 h-16 bg-secondary/10 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-                  <PlusIcon className="w-8 h-8 text-secondary" />
-                </div>
-                <h3 className="text-3xl font-bold mb-4">I want to organize & attend</h3>
-                <p className="text-muted-foreground mb-8 text-lg">
-                  Reach a wider audience, manage ticket sales, and track analytics with our powerful dashboard.
-                </p>
-                <Link href="/organizer">
-                  <Button size="lg" variant="secondary" className="w-full text-lg h-14 bg-secondary hover:bg-secondary/90 text-secondary-foreground">
-                    Create Event
-                  </Button>
-                </Link>
-              </div>
-              <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-secondary/5 rounded-full blur-3xl group-hover:bg-secondary/10 transition-colors" />
             </Card>
 
             {/* Organizer Path */}
@@ -355,7 +339,7 @@ export default function HomePage() {
                 </p>
                 <Link href="/organizer">
                   <Button size="lg" variant="secondary" className="w-full text-lg h-14 bg-secondary hover:bg-secondary/90 text-secondary-foreground">
-                    Discover and Create Event
+                    Create Event
                   </Button>
                 </Link>
               </div>
@@ -372,25 +356,57 @@ export default function HomePage() {
       {/* 5. Features Section */}
       <section className="py-16 md:py-24 bg-muted/30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl md:text-4xl font-bold text-center mb-12 text-balance">
-            Why Choose Zosavuta?
-          </h2>
+          <div className="max-w-3xl mx-auto text-center mb-14">
+            <p className="text-sm font-semibold uppercase tracking-wider text-primary mb-3">
+              The Zosavuta Experience
+            </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-balance">
+              Everything You Need for a Better Event Experience
+            </h2>
+
+            <p className="text-lg text-muted-foreground text-balance">
+              From finding your next event to getting through the gate, Zosavuta
+              makes buying, managing, and selling tickets simpler, safer, and more
+              convenient.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             <FeatureCard
               icon={<TicketIcon className="w-8 h-8" />}
-              title="Easy Ticketing"
-              description="Browse and book tickets for your favorite events in seconds"
+              title="Tickets Made Simple"
+              description="Find the event you want, choose your ticket, and complete your booking without the usual hassle."
             />
+
             <FeatureCard
               icon={<MapPinIcon className="w-8 h-8" />}
-              title="Find Events Nearby"
-              description="Discover events happening in your area with our location-based search"
+              title="Discover What's Happening"
+              description="Explore concerts, festivals, sports, conferences, and other events happening across Malawi."
             />
+
             <FeatureCard
               icon={<ShieldCheckIcon className="w-8 h-8" />}
-              title="Secure Payments"
-              description="Your transactions are protected with our secure payment gateway"
+              title="Tickets You Can Trust"
+              description="Every ticket is securely generated and verified at the gate, helping protect you from duplicate and counterfeit tickets."
+            />
+
+            <FeatureCard
+              icon={<SmartphoneIcon className="w-8 h-8" />}
+              title="Pay Your Way"
+              description="Buy your tickets using familiar payment options including Airtel Money, TNM Mpamba, and bank cards."
+            />
+
+            <FeatureCard
+              icon={<RefreshCwIcon className="w-8 h-8" />}
+              title="Buy or Resell Tickets"
+              description="Plans changed? Explore the resale marketplace to find available tickets or give someone else the chance to attend."
+            />
+
+            <FeatureCard
+              icon={<HeartHandshakeIcon className="w-8 h-8" />}
+              title="Built for Malawi"
+              description="Created with Malawians in mind, bringing event discovery, secure ticketing, and better event experiences together in one place."
             />
           </div>
         </div>

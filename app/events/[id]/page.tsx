@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { MapPinIcon, CalendarIcon, ShieldCheckIcon, UsersIcon, ChevronLeftIcon, TagIcon, ArrowRightIcon, TrendingDownIcon, ZoomInIcon, ZoomOutIcon, RotateCcwIcon } from 'lucide-react';
-import { Event } from '@/lib/db';
+import type { Event } from '@/types/event';
 
 export default function EventDetailPage() {
   const params = useParams();

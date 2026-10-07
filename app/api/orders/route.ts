@@ -2,18 +2,42 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, execute } from '@/lib/db';
 import pool from '@/lib/db';
 import { getAuthUser, canOrganizeEvents } from '@/lib/auth-server';
+import { checkOrganizerIsApproved } from '@/lib/organizer-verification';
 import { randomUUID } from 'crypto';
 
 export async function GET(req: NextRequest) {
+  // Require authentication — prevents IDOR where unauthenticated users could
+  // query any user's orders by simply passing a userId query param.
+  const authUser = await getAuthUser(req);
+  if (!authUser) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
-  const userId = searchParams.get('userId');
+  const requestedUserId = searchParams.get('userId');
   const eventId = searchParams.get('eventId');
   const status = searchParams.get('status');
+
+  // Determine the effective userId: admins and organizers may query by eventId
+  // for their own events. Regular users may only see their own orders.
+  const isAdmin = authUser.role === 'admin' || authUser.adminRole != null;
+  const isOrganizer = canOrganizeEvents(authUser);
 
   let sql = 'SELECT * FROM orders WHERE 1=1';
   const params: any[] = [];
 
-  if (userId) { sql += ' AND userId = ?'; params.push(userId); }
+  if (isAdmin) {
+    // Admins can see all orders; optionally scoped to a requested userId
+    if (requestedUserId) { sql += ' AND userId = ?'; params.push(requestedUserId); }
+  } else if (isOrganizer && eventId && !requestedUserId) {
+    // Organizers can see orders for a specific event (for check-in / management)
+    // but cannot query orders for arbitrary users
+    sql += ' AND organizerId = ?'; params.push(authUser.uid);
+  } else {
+    // Regular users (and organizers without an eventId) only see their own orders
+    sql += ' AND userId = ?'; params.push(authUser.uid);
+  }
+
   if (eventId) { sql += ' AND eventId = ?'; params.push(eventId); }
   if (status) { sql += ' AND status = ?'; params.push(status); }
   sql += ' ORDER BY createdAt DESC';
@@ -94,7 +118,7 @@ export async function POST(req: NextRequest) {
     }
 
     const [eventRows] = await conn.execute(
-      `SELECT id, title, date, time, location, venue, image, price, ticketTypes, ticketsAvailable, status
+      `SELECT id, title, organizerId, date, time, location, venue, image, price, ticketTypes, ticketsAvailable, status
        FROM events WHERE id = ? FOR UPDATE`,
       [parsedEventId]
     );
@@ -104,6 +128,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Event is not available for purchase' }, { status: 400 });
     }
     const event = events[0];
+
+    const isOrganizerApproved = await checkOrganizerIsApproved(String(event.organizerId));
+    if (!isOrganizerApproved) {
+      await conn.rollback();
+      return NextResponse.json(
+        { error: 'Ticket sales for this event are temporarily paused pending organizer compliance verification.' },
+        { status: 400 }
+      );
+    }
     if (Number(event.ticketsAvailable) < parsedQuantity) {
       await conn.rollback();
       return NextResponse.json({ error: 'Not enough tickets available' }, { status: 409 });

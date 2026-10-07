@@ -34,8 +34,6 @@ export default function CreateEventPage() {
   const [step, setStep] = useState<Step>(1);
   const [submissionId, setSubmissionId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [roleLoading, setRoleLoading] = useState(true);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
@@ -56,10 +54,10 @@ export default function CreateEventPage() {
 
   const [ticketData, setTicketData] = useState({
     ticketsTotal: '500',
-    price: '3500',
-    standardPrice: '3500',
-    vipPrice: '5000',
-    vvipPrice: '7500',
+    price: '10000',
+    standardPrice: '10000',
+    vipPrice: '15000',
+    vvipPrice: '20000',
     category: 'music',
     time: '18:00',
   });
@@ -96,11 +94,15 @@ export default function CreateEventPage() {
     if (!file) return;
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!allowedTypes.includes(file.type)) {
-      toast.error('Only JPEG, PNG, and WebP images are allowed');
+      toast.error('Invalid file type', {
+        description: 'Only JPEG, PNG, and WebP images are allowed',
+      });
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      toast.error('File size must be 5 MB or smaller');
+      toast.error('File too large', {
+        description: 'File size must be 5 MB or smaller',
+      });
       return;
     }
     setCoverFile(file);
@@ -155,10 +157,9 @@ export default function CreateEventPage() {
     );
   }
 
+  // STEP 1 — create the event submission (returns the new submission id)
   const handleEventSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
     setLoading(true);
 
     try {
@@ -214,24 +215,33 @@ export default function CreateEventPage() {
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create event submission');
+      if (!data.id) throw new Error('Server did not return a submission id');
 
-      toast.success('Event and ticket prices submitted for admin approval');
-      router.push('/organizer/dashboard');
+      setSubmissionId(data.id);
+      setStep(2);
+      toast.success('Event details saved', {
+        description: 'Now review and finalise your ticket pricing.',
+      });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to create event submission';
-      setError(message);
-      toast.error(message);
+      toast.error('Submission failed', {
+        description: message,
+      });
     } finally {
       setLoading(false);
     }
   };
 
+  // STEP 2 — PATCH the ticket pricing onto the submission
   const handleTicketSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!submissionId) return;
+    if (!submissionId) {
+      toast.error('Missing submission id', {
+        description: 'Please go back and save the event details first.',
+      });
+      return;
+    }
 
-    setError('');
-    setSuccess('');
     setLoading(true);
 
     try {
@@ -256,12 +266,15 @@ export default function CreateEventPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save ticket details');
 
-      toast.success('Tickets submitted for admin approval');
+      toast.success('Submitted for approval', {
+        description: 'Tickets submitted for admin approval',
+      });
       router.push('/organizer/dashboard');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to save ticket details';
-      setError(message);
-      toast.error(message);
+      toast.error('Submission failed', {
+        description: message,
+      });
     } finally {
       setLoading(false);
     }
@@ -276,285 +289,273 @@ export default function CreateEventPage() {
             Enter your event details and configure ticket pricing for Standard, VIP, and VVIP tiers. Your submission will be reviewed by an administrator.
           </p>
 
-          {success && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex gap-3 mb-6">
-              <CheckCircle2Icon className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-green-700">{success}</p>
-            </div>
-          )}
+          {/* Step indicator */}
+          <div className="flex items-center gap-6 mb-8">
+            <StepIndicator n={1} label="Event Details" active={step === 1} done={step > 1} />
+            <div className="flex-1 h-px bg-border" />
+            <StepIndicator n={2} label="Ticket Pricing" active={step === 2} done={false} />
+          </div>
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex gap-3 mb-6">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          )}
+          {step === 1 && (
+            <form onSubmit={handleEventSubmit} className="space-y-8">
+              <div className="space-y-4">
+                <Field>
+                  <FieldLabel htmlFor="cover">Cover Photo *</FieldLabel>
+                  <div className="mt-2 space-y-3">
+                    <input
+                      ref={fileInputRef}
+                      id="cover"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleCoverChange}
+                      disabled={loading}
+                      className="hidden"
+                    />
 
-          <form onSubmit={handleEventSubmit} className="space-y-8">
-            <div className="space-y-4">
-              <Field>
-                <FieldLabel htmlFor="cover">Cover Photo *</FieldLabel>
-                <div className="mt-2 space-y-3">
-                  <input
-                    ref={fileInputRef}
-                    id="cover"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={handleCoverChange}
-                    disabled={loading}
-                    className="hidden"
-                  />
-
-                  {coverPreview ? (
-                    <div className="relative w-full h-56 rounded-2xl overflow-hidden bg-muted group border border-border">
-                      <img src={coverPreview} alt="Cover preview" className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="rounded-xl font-bold gap-2 cursor-pointer"
-                        >
-                          <UploadIcon className="w-4 h-4" />
-                          Change Photo
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="sm"
-                          onClick={removeCover}
-                          className="rounded-xl font-bold gap-2 cursor-pointer"
-                        >
-                          <XIcon className="w-4 h-4" />
-                          Remove
-                        </Button>
+                    {coverPreview ? (
+                      <div className="relative w-full h-56 rounded-2xl overflow-hidden bg-muted group border border-border">
+                        <img src={coverPreview} alt="Cover preview" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="rounded-xl font-bold gap-2 cursor-pointer"
+                          >
+                            <UploadIcon className="w-4 h-4" />
+                            Change Photo
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={removeCover}
+                            className="rounded-xl font-bold gap-2 cursor-pointer"
+                          >
+                            <XIcon className="w-4 h-4" />
+                            Remove
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                      onClick={() => fileInputRef.current?.click()}
-                      className={`w-full h-44 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-center p-6 ${isDragging
+                    ) : (
+                      <div
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`w-full h-44 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-center p-6 ${isDragging
                           ? 'border-primary bg-primary/10 scale-[1.01]'
                           : 'border-border hover:border-primary/50 hover:bg-muted/50 bg-card'
-                        }`}
-                    >
-                      <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-3">
-                        <ImageIcon className="w-6 h-6" />
+                          }`}
+                      >
+                        <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-3">
+                          <ImageIcon className="w-6 h-6" />
+                        </div>
+                        <p className="text-sm font-bold text-foreground">
+                          Drag & drop event cover photo here, or <span className="text-primary underline">browse</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">Supports JPEG, PNG or WebP (max 5 MB)</p>
                       </div>
-                      <p className="text-sm font-bold text-foreground">
-                        Drag & drop event cover photo here, or <span className="text-primary underline">browse</span>
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">Supports JPEG, PNG or WebP (max 5 MB)</p>
-                    </div>
-                  )}
-                </div>
-              </Field>
+                    )}
+                  </div>
+                </Field>
 
-              <Field>
-                <FieldLabel htmlFor="title">Event Title *</FieldLabel>
-                <Input
-                  id="title"
-                  placeholder="e.g., Afrobeats Music Festival"
-                  value={eventData.title}
-                  onChange={(e) => setEventData({ ...eventData, title: e.target.value })}
-                  required
-                />
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="category">Category *</FieldLabel>
-                <select
-                  id="category"
-                  value={eventData.category}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setEventData({ ...eventData, category: val });
-                    setTicketData((prev) => ({ ...prev, category: val }));
-                  }}
-                  className="w-full px-3 py-2 border border-border rounded-lg bg-background"
-                  required
-                >
-                  <option value="music">Music</option>
-                  <option value="sports">Sports</option>
-                  <option value="conference">Conference</option>
-                  <option value="festival">Festival</option>
-                  <option value="workshop">Workshop</option>
-                </select>
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="description">Short Description *</FieldLabel>
-                <Textarea
-                  id="description"
-                  placeholder="Brief description for listings"
-                  value={eventData.description}
-                  onChange={(e) => setEventData({ ...eventData, description: e.target.value })}
-                  className="min-h-20"
-                  required
-                />
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="fullDescription">Full Description</FieldLabel>
-                <Textarea
-                  id="fullDescription"
-                  placeholder="Detailed event description"
-                  value={eventData.fullDescription}
-                  onChange={(e) => setEventData({ ...eventData, fullDescription: e.target.value })}
-                  className="min-h-32"
-                />
-              </Field>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field>
-                  <FieldLabel htmlFor="date">Event Date *</FieldLabel>
+                  <FieldLabel htmlFor="title">Event Title *</FieldLabel>
                   <Input
-                    id="date"
-                    type="date"
-                    value={eventData.date}
-                    onChange={(e) => setEventData({ ...eventData, date: e.target.value })}
+                    id="title"
+                    placeholder="e.g., Afrobeats Music Festival"
+                    value={eventData.title}
+                    onChange={(e) => setEventData({ ...eventData, title: e.target.value })}
                     required
                   />
                 </Field>
+
                 <Field>
-                  <FieldLabel htmlFor="event-time">Event Time *</FieldLabel>
-                  <Input
-                    id="event-time"
-                    type="time"
-                    value={eventData.time}
+                  <FieldLabel htmlFor="category">Category *</FieldLabel>
+                  <select
+                    id="category"
+                    value={eventData.category}
                     onChange={(e) => {
                       const val = e.target.value;
-                      setEventData({ ...eventData, time: val });
-                      setTicketData((prev) => ({ ...prev, time: val }));
+                      setEventData({ ...eventData, category: val });
+                      setTicketData((prev) => ({ ...prev, category: val }));
                     }}
+                    className="w-full px-3 py-2 border border-border rounded-lg bg-background"
+                    required
+                  >
+                    <option value="music">Music</option>
+                    <option value="sports">Sports</option>
+                    <option value="conference">Conference</option>
+                    <option value="festival">Festival</option>
+                    <option value="workshop">Workshop</option>
+                  </select>
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="description">Short Description *</FieldLabel>
+                  <Textarea
+                    id="description"
+                    placeholder="Brief description for listings"
+                    value={eventData.description}
+                    onChange={(e) => setEventData({ ...eventData, description: e.target.value })}
+                    className="min-h-20"
                     required
                   />
                 </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="fullDescription">Full Description</FieldLabel>
+                  <Textarea
+                    id="fullDescription"
+                    placeholder="Detailed event description"
+                    value={eventData.fullDescription}
+                    onChange={(e) => setEventData({ ...eventData, fullDescription: e.target.value })}
+                    className="min-h-32"
+                  />
+                </Field>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field>
+                    <FieldLabel htmlFor="date">Event Date *</FieldLabel>
+                    <Input
+                      id="date"
+                      type="date"
+                      value={eventData.date}
+                      onChange={(e) => setEventData({ ...eventData, date: e.target.value })}
+                      required
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="event-time">Event Time *</FieldLabel>
+                    <Input
+                      id="event-time"
+                      type="time"
+                      value={eventData.time}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEventData({ ...eventData, time: val });
+                        setTicketData((prev) => ({ ...prev, time: val }));
+                      }}
+                      required
+                    />
+                  </Field>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field>
+                    <FieldLabel htmlFor="location">Location/City *</FieldLabel>
+                    <Input
+                      id="location"
+                      placeholder="e.g., Lilongwe, Malawi"
+                      value={eventData.location}
+                      onChange={(e) => setEventData({ ...eventData, location: e.target.value })}
+                      required
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="venue">Venue Name *</FieldLabel>
+                    <Input
+                      id="venue"
+                      placeholder="e.g., BICC"
+                      value={eventData.venue}
+                      onChange={(e) => setEventData({ ...eventData, venue: e.target.value })}
+                      required
+                    />
+                  </Field>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field>
-                  <FieldLabel htmlFor="location">Location/City *</FieldLabel>
-                  <Input
-                    id="location"
-                    placeholder="e.g., Lilongwe, Malawi"
-                    value={eventData.location}
-                    onChange={(e) => setEventData({ ...eventData, location: e.target.value })}
-                    required
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="venue">Venue Name *</FieldLabel>
-                  <Input
-                    id="venue"
-                    placeholder="e.g., BICC"
-                    value={eventData.venue}
-                    onChange={(e) => setEventData({ ...eventData, venue: e.target.value })}
-                    required
-                  />
-                </Field>
+              <div className="flex gap-4 pt-4 border-t border-border">
+                <Link href="/organizer/dashboard" className="flex-1">
+                  <Button variant="outline" className="w-full cursor-pointer">
+                    Cancel
+                  </Button>
+                </Link>
+                <Button type="submit" disabled={loading} className="flex-1 bg-primary h-12 font-semibold cursor-pointer">
+                  {loading ? 'Saving Event...' : 'Next: Ticket Pricing →'}
+                </Button>
               </div>
+            </form>
+          )}
 
-              {/* Ticket Pricing and Capacity Set When Creating Event */}
-              <div className="border border-border/80 rounded-2xl p-5 bg-muted/20 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-base font-bold">Ticket Pricing & Capacity *</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Set the capacity and ticket pricing for each tier. Standard, VIP, and VVIP tickets will be created.
-                    </p>
+          {step === 2 && (
+            <form onSubmit={handleTicketSubmit} className="space-y-8">
+              <div className="space-y-4">
+                <div className="border border-border/80 rounded-2xl p-5 bg-muted/20 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-bold">Ticket Pricing & Capacity *</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Set the capacity and ticket pricing for each tier. Standard, VIP, and VVIP tickets will be created.
+                      </p>
+                    </div>
+                  </div>
+
+                  <Field>
+                    <FieldLabel htmlFor="ticketsTotal">Total Tickets Capacity *</FieldLabel>
+                    <Input
+                      id="ticketsTotal"
+                      type="number"
+                      min="1"
+                      value={ticketData.ticketsTotal}
+                      onChange={(e) => setTicketData({ ...ticketData, ticketsTotal: e.target.value })}
+                      required
+                      placeholder="e.g., 500"
+                    />
+                  </Field>
+
+                  <div className="space-y-3">
+                    <FieldLabel className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Tier Prices (MWK) *
+                    </FieldLabel>
+                    {(['standardPrice', 'vipPrice', 'vvipPrice'] as const).map((field, index) => {
+                      const tierName = ['Standard', 'VIP', 'VVIP'][index];
+                      return (
+                        <div
+                          key={field}
+                          className="grid grid-cols-[100px_1fr] sm:grid-cols-[120px_1fr] items-center gap-3 bg-background p-3 rounded-xl border border-border"
+                        >
+                          <span className="font-bold text-sm">{tierName}</span>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={ticketData[field]}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTicketData((prev) => ({
+                                ...prev,
+                                [field]: val,
+                                ...(field === 'standardPrice' ? { price: val } : {}),
+                              }));
+                            }}
+                            required
+                            placeholder={`Price for ${tierName}`}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-
-                <Field>
-                  <FieldLabel htmlFor="ticketsTotal">Total Tickets Capacity *</FieldLabel>
-                  <Input
-                    id="ticketsTotal"
-                    type="number"
-                    min="1"
-                    value={ticketData.ticketsTotal}
-                    onChange={(e) => setTicketData({ ...ticketData, ticketsTotal: e.target.value })}
-                    required
-                    placeholder="e.g., 500"
-                  />
-                </Field>
-
-                <div className="space-y-3">
-                  <FieldLabel className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Tier Prices (MWK) *
-                  </FieldLabel>
-                  {(['standardPrice', 'vipPrice', 'vvipPrice'] as const).map((field, index) => {
-                    const tierName = ['Standard', 'VIP', 'VVIP'][index];
-                    return (
-                      <div
-                        key={field}
-                        className="grid grid-cols-[100px_1fr] sm:grid-cols-[120px_1fr] items-center gap-3 bg-background p-3 rounded-xl border border-border"
-                      >
-                        <span className="font-bold text-sm">{tierName}</span>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={ticketData[field]}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setTicketData((prev) => ({
-                              ...prev,
-                              [field]: val,
-                              ...(field === 'standardPrice' ? { price: val } : {}),
-                            }));
-                          }}
-                          required
-                          placeholder={`Price for ${tierName}`}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
 
-              {/* Event Features */}
-              <div className="space-y-3 border border-border rounded-xl p-4">
-                <FieldLabel className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Additional Options
-                </FieldLabel>
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer text-sm">
-                    <input
-                      type="checkbox"
-                      checked={eventData.hasBusTransport}
-                      onChange={(e) => setEventData({ ...eventData, hasBusTransport: e.target.checked })}
-                      className="rounded border-border text-primary focus:ring-primary"
-                    />
-                    <span>Include Bus Transport Option</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer text-sm">
-                    <input
-                      type="checkbox"
-                      checked={eventData.hasSeating}
-                      onChange={(e) => setEventData({ ...eventData, hasSeating: e.target.checked })}
-                      className="rounded border-border text-primary focus:ring-primary"
-                    />
-                    <span>Assigned Seating Available</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-4 pt-4 border-t border-border">
-              <Link href="/organizer/dashboard" className="flex-1">
-                <Button variant="outline" className="w-full cursor-pointer">
-                  Cancel
+              <div className="flex gap-4 pt-4 border-t border-border">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 cursor-pointer"
+                  onClick={() => setStep(1)}
+                  disabled={loading}
+                >
+                  ← Back
                 </Button>
-              </Link>
-              <Button type="submit" disabled={loading} className="flex-1 bg-primary h-12 font-semibold cursor-pointer">
-                {loading ? 'Submitting Event...' : 'Submit Event for Admin Approval →'}
-              </Button>
-            </div>
-          </form>
+                <Button type="submit" disabled={loading} className="flex-1 bg-primary h-12 font-semibold cursor-pointer">
+                  {loading ? 'Submitting...' : 'Submit for Admin Approval →'}
+                </Button>
+              </div>
+            </form>
+          )}
         </Card>
       </div>
     </>

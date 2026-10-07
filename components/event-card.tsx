@@ -2,7 +2,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { MapPinIcon, CalendarIcon, TicketIcon } from 'lucide-react';
 import Image from 'next/image';
-import { Event } from '@/lib/db';
+import type { Event } from '@/types/event';
 
 interface EventCardProps {
   event: Event;

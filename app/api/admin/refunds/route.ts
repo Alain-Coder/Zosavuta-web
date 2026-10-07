@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserAdminRole, checkAndRegisterDualApproval } from '@/lib/security-controls';
 import { processTicketRefund, processEventCancellation, processChargeback } from '@/lib/refunds';
+import { getAuthUser } from '@/lib/auth-server';
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,6 +10,12 @@ export async function POST(req: NextRequest) {
 
     if (!action || !adminId) {
       return NextResponse.json({ error: 'action and adminId are required' }, { status: 400 });
+    }
+
+    // Verify caller's JWT matches the claimed adminId
+    const authUser = await getAuthUser(req);
+    if (!authUser || authUser.uid !== adminId) {
+      return NextResponse.json({ error: 'Token mismatch or invalid token' }, { status: 401 });
     }
 
     const adminRole = await getUserAdminRole(adminId);

@@ -12,6 +12,7 @@ import {
   HomeIcon,
   CalendarIcon,
   ArrowLeftRightIcon,
+  ShieldCheckIcon,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
   { href: '/organizer', label: 'Create Event', icon: PlusIcon, exact: true },
   { href: '/organizer/events', label: 'My Events', icon: CalendarIcon },
   { href: '/organizer/physical-tickets', label: 'Physical Tickets', icon: TicketIcon },
+  { href: '/organizer/verification', label: 'KYC Verification', icon: ShieldCheckIcon },
 ];
 
 export function OrganizerSidebar() {

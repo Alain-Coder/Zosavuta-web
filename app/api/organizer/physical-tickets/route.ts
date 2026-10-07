@@ -3,6 +3,7 @@ import { query } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth-server';
 import { canOrganize } from '@/lib/roles';
 import { generatePhysicalTickets } from '@/lib/physical-tickets';
+import { checkOrganizerIsApproved } from '@/lib/organizer-verification';
 
 function forbidden() {
   return NextResponse.json({ error: 'Organizer access is required' }, { status: 403 });
@@ -110,6 +111,15 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const user = await getAuthUser(req);
   if (!user || !canOrganize(user.role)) return forbidden();
+
+  const isApproved = await checkOrganizerIsApproved(user.uid);
+  if (!isApproved) {
+    return NextResponse.json(
+      { error: 'Organizer verification required. Your account must be verified and approved before generating physical selling-point tickets.' },
+      { status: 403 }
+    );
+  }
+
   const body = await req.json();
   const eventId = Number(body.eventId);
   const quantity = Number(body.quantity);

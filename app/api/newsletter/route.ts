@@ -8,9 +8,9 @@ export async function POST(req: NextRequest) {
     const email = (body.email ?? "").trim().toLowerCase();
     const source = (body.source ?? "footer").trim();
 
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
       return NextResponse.json(
-        { success: false, error: "Please enter a valid email address." },
+        { success: false, error: 'Please enter a valid email address.' },
         { status: 400 }
       );
     }
@@ -46,10 +46,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const status  = searchParams.get("status") ?? "active";   // "active" | "unsubscribed" | "all"
-    const page    = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
-    const limit   = Math.min(100, parseInt(searchParams.get("limit") ?? "50", 10));
-    const offset  = (page - 1) * limit;
+    const status = searchParams.get("status") ?? "active";   // "active" | "unsubscribed" | "all"
+    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
+    const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "50", 10));
+    const offset = (page - 1) * limit;
 
     const whereClause = status === "all" ? "" : "WHERE status = ?";
     const params: any[] = status === "all" ? [] : [status];

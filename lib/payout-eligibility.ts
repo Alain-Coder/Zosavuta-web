@@ -1,4 +1,5 @@
 import pool, { query, execute } from '@/lib/db';
+import { checkOrganizerIsApproved, getVerificationByUserId } from '@/lib/organizer-verification';
 
 export interface PayoutEligibility {
   eligible: boolean;
@@ -16,13 +17,13 @@ export async function releaseEligiblePendingBalances(): Promise<number> {
   try {
     await conn.beginTransaction();
 
-    // 1. Mark past active events as completed
+    // 1. Conclude events whose date is strictly before today (the event finished yesterday or earlier)
     await conn.execute(
       `UPDATE events SET status = 'completed' 
-       WHERE status = 'active' AND date < CURDATE()`
+       WHERE status IN ('active', 'sold_out', 'expired') AND date < CURDATE()`
     );
 
-    // 2. Find pending earnings where event ended or completed
+    // 2. Find pending earnings from events that have finished (the next day or completed status)
     const [eligibleEntries] = await conn.execute(
       `SELECT l.id, l.sellerId, l.amount 
        FROM financial_ledger l
@@ -103,6 +104,42 @@ export async function getPayoutEligibility(sellerId: string): Promise<PayoutElig
       isBlocked: true,
       reason: 'Payouts are currently blocked on your account due to a compliance or refund dispute hold.',
     };
+  }
+
+  // Check organizer KYC verification status & bank details
+  const [userRow] = await query<{ role: string }>('SELECT role FROM users WHERE uid = ? LIMIT 1', [sellerId]);
+  if (userRow && (userRow.role === 'organizer' || userRow.role === 'customer_organizer')) {
+    const isApproved = await checkOrganizerIsApproved(sellerId);
+    if (!isApproved) {
+      return {
+        eligible: false,
+        pendingBalance,
+        availableBalance,
+        paidOutBalance,
+        currency: balance.currency || 'MWK',
+        isBlocked: true,
+        reason: 'Organizer verification required. Your account must be verified and approved before receiving seller payouts.',
+      };
+    }
+
+    const verif = await getVerificationByUserId(sellerId);
+    const rawBank = verif
+      ? (verif.businessType === 'registered'
+          ? (verif.businessPayoutDetails || verif.individualPayoutDetails)
+          : (verif.individualPayoutDetails || verif.businessPayoutDetails))
+      : null;
+
+    if (!rawBank || !rawBank.accountNumber || !rawBank.bankName) {
+      return {
+        eligible: false,
+        pendingBalance,
+        availableBalance,
+        paidOutBalance,
+        currency: balance.currency || 'MWK',
+        isBlocked: true,
+        reason: 'Verified bank account details (Bank Name and Account Number) are required before requesting withdrawals.',
+      };
+    }
   }
 
   const MIN_PAYOUT_AMOUNT = 2000;

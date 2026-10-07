@@ -1,27 +1,7 @@
 import mysql, { Pool, PoolConnection, ResultSetHeader } from 'mysql2/promise';
 
-export interface Event {
-  id: string;
-  title: string;
-  description: string;
-  fullDescription: string;
-  category: string;
-  date: string;
-  time: string;
-  location: string;
-  venue: string;
-  image: string;
-  price: number;
-  ticketsTotal: number;
-  ticketsAvailable: number;
-  ticketTypes?: Array<{ name: string; price: number }>;
-  organizerId: string;
-  organizer?: string;
-  status: 'active' | 'draft' | 'sold_out' | 'cancelled';
-  busTransport: boolean;
-  seatingChart: boolean;
-  createdAt?: string;
-}
+import type { Event } from '@/types/event';
+export type { Event };
 
 let pool: Pool | null = null;
 
@@ -115,6 +95,7 @@ export function formatRowToEvent(row: any): Event {
     status: row.status || 'active',
     busTransport: Boolean(row.busTransport),
     seatingChart: Boolean(row.seatingChart),
+    isFeatured: Boolean(row.isFeatured),
     ticketTypes: parsedTicketTypes,
     createdAt: row.createdAt ? String(row.createdAt) : undefined,
   };
@@ -142,7 +123,8 @@ export async function getEventsFromDB(category?: string, search?: string): Promi
       params.push(searchPattern, searchPattern, searchPattern);
     }
 
-    query += ` ORDER BY e.date ASC`;
+    // Featured events come first, then by date ascending
+    query += ` ORDER BY e.isFeatured DESC, e.date ASC`;
 
     const [rows] = await dbPool.execute(query, params);
     if (!Array.isArray(rows)) return [];
@@ -187,30 +169,8 @@ export interface ContactMessage {
   createdAt?: string;
 }
 
-export async function ensureContactMessagesTable(): Promise<void> {
-  try {
-    const dbPool = getPool();
-    await dbPool.execute(`
-      CREATE TABLE IF NOT EXISTS contact_messages (
-        id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        email VARCHAR(255) NOT NULL,
-        subject VARCHAR(255) NOT NULL,
-        message TEXT NOT NULL,
-        status ENUM('unread','read','resolved') NOT NULL DEFAULT 'unread',
-        createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_contact_messages_email (email),
-        INDEX idx_contact_messages_status (status)
-      ) ENGINE=InnoDB;
-    `);
-  } catch (error) {
-    console.error('Error ensuring contact_messages table exists:', error);
-  }
-}
-
 export async function saveContactMessage(msg: ContactMessage): Promise<boolean> {
   try {
-    await ensureContactMessagesTable();
     const dbPool = getPool();
 
     await dbPool.execute(
@@ -237,7 +197,6 @@ export async function getContactMessages(params: GetContactMessagesParams = {}):
   page: number;
   limit: number;
 }> {
-  await ensureContactMessagesTable();
   const dbPool = getPool();
   const page = Math.max(1, Number(params.page) || 1);
   const limit = Math.max(1, Math.min(100, Number(params.limit) || 10));
@@ -287,7 +246,6 @@ export async function getContactMessagesStats(): Promise<{
   read: number;
   resolved: number;
 }> {
-  await ensureContactMessagesTable();
   try {
     const dbPool = getPool();
     const [rows] = await dbPool.execute(`
@@ -315,7 +273,6 @@ export async function updateContactMessageStatus(
   id: number | string,
   status: 'unread' | 'read' | 'resolved'
 ): Promise<boolean> {
-  await ensureContactMessagesTable();
   try {
     const dbPool = getPool();
     const [result] = await dbPool.execute(
@@ -330,7 +287,6 @@ export async function updateContactMessageStatus(
 }
 
 export async function deleteContactMessage(id: number | string): Promise<boolean> {
-  await ensureContactMessagesTable();
   try {
     const dbPool = getPool();
     const [result] = await dbPool.execute(
