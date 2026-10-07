@@ -35,6 +35,8 @@ export default function CreateEventPage() {
   const [submissionId, setSubmissionId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [roleLoading, setRoleLoading] = useState(true);
+  const [isApproved, setIsApproved] = useState<boolean | null>(null);
+  const [userRole, setUserRole] = useState<string>('');
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -75,13 +77,22 @@ export default function CreateEventPage() {
         const res = await fetch(`/api/users/${user.uid}`);
         if (res.ok) {
           const data = await res.json();
+          setUserRole(data.role || '');
           if (isAdmin(data.role)) {
             router.push('/admin');
             return;
           }
           if (!canOrganize(data.role)) {
             router.push('/dashboard');
+            return;
           }
+        }
+
+        const headers = await getAuthHeaders();
+        const verifRes = await fetch('/api/organizer/verification', { headers });
+        if (verifRes.ok) {
+          const verifData = await verifRes.json();
+          setIsApproved(Boolean(verifData.isApproved));
         }
       } finally {
         setRoleLoading(false);
@@ -157,58 +168,110 @@ export default function CreateEventPage() {
     );
   }
 
-  // STEP 1 — create the event submission (returns the new submission id)
+  // STEP 1 — create the event submission (validates first, uploads only if clean, rolls back on error)
   const handleEventSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 1. Verification check
+    if (isApproved === false && userRole !== 'admin') {
+      toast.error('Organizer verification required', {
+        description: 'Your account must be verified and approved before submitting events.',
+      });
+      return;
+    }
+
+    // 2. Comprehensive client-side validation BEFORE uploading any cover image
+    if (!eventData.title.trim()) {
+      toast.error('Missing required field', { description: 'Please enter an event title' });
+      return;
+    }
+    if (!eventData.date) {
+      toast.error('Missing required field', { description: 'Please select an event date' });
+      return;
+    }
+    if (!eventData.time) {
+      toast.error('Missing required field', { description: 'Please select an event time' });
+      return;
+    }
+    if (!eventData.location.trim()) {
+      toast.error('Missing required field', { description: 'Please enter an event location' });
+      return;
+    }
+    if (!eventData.venue.trim()) {
+      toast.error('Missing required field', { description: 'Please enter an event venue' });
+      return;
+    }
+    if (!coverFile && !coverPreview) {
+      toast.error('Cover photo required', { description: 'Please upload a cover photo for your event' });
+      return;
+    }
+    if (coverFile) {
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+      if (!allowedTypes.includes(coverFile.type)) {
+        toast.error('Invalid file type', { description: 'Only JPEG, PNG, and WebP images are allowed' });
+        return;
+      }
+      if (coverFile.size > 5 * 1024 * 1024) {
+        toast.error('File too large', { description: 'Cover photo size must be 5 MB or smaller' });
+        return;
+      }
+    }
+
+    const standardPrice = Number(ticketData.standardPrice || ticketData.price);
+    if (isNaN(standardPrice) || standardPrice < 0) {
+      toast.error('Invalid ticket price', { description: 'Please enter a valid ticket price' });
+      return;
+    }
+    const parsedTicketsTotal = parseInt(ticketData.ticketsTotal, 10);
+    if (isNaN(parsedTicketsTotal) || parsedTicketsTotal <= 0) {
+      toast.error('Invalid ticket count', { description: 'Please enter a valid number of tickets' });
+      return;
+    }
+
     setLoading(true);
+    let newlyUploadedUrl: string | null = null;
 
     try {
-      if (!eventData.title || !eventData.date || !eventData.location || !eventData.venue) {
-        throw new Error('Please fill in all required event fields');
-      }
-      if (!coverFile && !coverPreview) {
-        throw new Error('Please upload a cover photo for your event');
-      }
-
       let imageUrl = coverPreview || '';
 
+      // 3. Upload cover image ONLY after all validations pass
       if (coverFile) {
-        try {
-          const uploadHeaders = await getAuthUploadHeaders();
-          const formData = new FormData();
-          formData.append('file', coverFile);
-          const uploadRes = await fetch('/api/upload/event-cover', {
-            method: 'POST',
-            headers: uploadHeaders,
-            body: formData,
-          });
-          if (uploadRes.ok) {
-            const uploadData = await uploadRes.json();
-            if (uploadData.url) imageUrl = uploadData.url;
-          }
-        } catch {
-          // Fallback to local data URL if server upload fails
+        const uploadHeaders = await getAuthUploadHeaders();
+        const formData = new FormData();
+        formData.append('file', coverFile);
+        const uploadRes = await fetch('/api/upload/event-cover', {
+          method: 'POST',
+          headers: uploadHeaders,
+          body: formData,
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok || !uploadData.url) {
+          throw new Error(uploadData?.error || 'Failed to upload cover photo');
         }
+        newlyUploadedUrl = uploadData.url;
+        imageUrl = uploadData.url;
       }
 
-      const standardPrice = Number(ticketData.standardPrice || ticketData.price);
       const headers = await getAuthHeaders();
       const res = await fetch('/api/event-submissions', {
         method: 'POST',
         headers,
         body: JSON.stringify({
           ...eventData,
+          title: eventData.title.trim(),
+          location: eventData.location.trim(),
+          venue: eventData.venue.trim(),
           category: eventData.category,
           time: eventData.time,
           seatingChart: eventData.hasSeating,
           busTransport: eventData.hasBusTransport,
           image: imageUrl,
           price: standardPrice,
-          ticketsTotal: parseInt(ticketData.ticketsTotal),
+          ticketsTotal: parsedTicketsTotal,
           ticketTypes: [
             { name: 'Standard', price: standardPrice },
-            { name: 'VIP', price: Number(ticketData.vipPrice) },
-            { name: 'VVIP', price: Number(ticketData.vvipPrice) },
+            { name: 'VIP', price: Math.max(0, Number(ticketData.vipPrice) || 0) },
+            { name: 'VVIP', price: Math.max(0, Number(ticketData.vvipPrice) || 0) },
           ],
         }),
       });
@@ -223,6 +286,20 @@ export default function CreateEventPage() {
         description: 'Now review and finalise your ticket pricing.',
       });
     } catch (err: unknown) {
+      // 4. Rollback: delete uploaded cover photo from server if submission fails
+      if (newlyUploadedUrl) {
+        try {
+          const deleteHeaders = await getAuthHeaders();
+          await fetch('/api/upload/event-cover', {
+            method: 'DELETE',
+            headers: deleteHeaders,
+            body: JSON.stringify({ url: newlyUploadedUrl }),
+          });
+        } catch (cleanupErr) {
+          console.error('Failed to clean up uploaded cover image after error:', cleanupErr);
+        }
+      }
+
       const message = err instanceof Error ? err.message : 'Failed to create event submission';
       toast.error('Submission failed', {
         description: message,
@@ -288,6 +365,21 @@ export default function CreateEventPage() {
           <p className="text-muted-foreground mb-6">
             Enter your event details and configure ticket pricing for Standard, VIP, and VVIP tiers. Your submission will be reviewed by an administrator.
           </p>
+
+          {isApproved === false && userRole !== 'admin' && (
+            <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3 text-amber-600 dark:text-amber-400">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-bold">Organizer Verification Required</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Your account must be verified and approved by an administrator before you can submit events.
+                  <Link href="/organizer/verification" className="ml-1 underline font-medium text-primary">
+                    Complete Verification
+                  </Link>
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Step indicator */}
           <div className="flex items-center gap-6 mb-8">

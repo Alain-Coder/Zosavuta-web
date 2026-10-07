@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir, unlink } from 'fs/promises';
 import path from 'path';
 import { getAuthUser, canOrganizeEvents } from '@/lib/auth-server';
+import { checkOrganizerIsApproved } from '@/lib/organizer-verification';
 
 const MAX_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -11,6 +12,16 @@ export async function POST(req: NextRequest) {
     const user = await getAuthUser(req);
     if (!canOrganizeEvents(user)) {
       return NextResponse.json({ error: 'Forbidden — organizer role required' }, { status: 403 });
+    }
+
+    if (user.role !== 'admin') {
+      const isApproved = await checkOrganizerIsApproved(user.uid);
+      if (!isApproved) {
+        return NextResponse.json(
+          { error: 'Organizer verification required. Your account must be verified and approved before uploading event covers.' },
+          { status: 403 }
+        );
+      }
     }
 
     const formData = await req.formData();
