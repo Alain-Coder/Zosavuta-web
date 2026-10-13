@@ -38,6 +38,7 @@ import { toast } from 'sonner';
 
 interface EventItem {
   id: string;
+  legacyId: number;
   title: string;
   description: string;
   category: string;
@@ -109,7 +110,7 @@ export default function OrganizerEventsPage() {
 
     const fetchData = async () => {
       try {
-        const roleRes = await fetch(`/api/users/${user.uid}`);
+        const roleRes = await fetch(`/api/users/${user.uid}`, { headers: await getAuthHeaders() });
         if (roleRes.ok) {
           const roleData = await roleRes.json();
           if (isAdmin(roleData.role)) {
@@ -157,7 +158,7 @@ export default function OrganizerEventsPage() {
     setOrdersLoading(true);
     setSearchQuery('');
     try {
-      const res = await fetch(`/api/orders?eventId=${event.id}`);
+      const res = await fetch(`/api/orders?eventId=${event.legacyId}`);
       if (res.ok) {
         const data = await res.json();
         setEventOrders(Array.isArray(data) ? data : []);

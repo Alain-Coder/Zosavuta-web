@@ -27,7 +27,7 @@ export async function releaseEligiblePendingBalances(): Promise<number> {
     const [eligibleEntries] = await conn.execute(
       `SELECT l.id, l.sellerId, l.amount 
        FROM financial_ledger l
-       JOIN events e ON l.eventId = e.id
+       JOIN events e ON l.eventId = e.legacyId
        WHERE l.status = 'PENDING'
          AND l.transactionType IN ('PRIMARY_TICKET_SALE', 'SECONDARY_TICKET_SALE')
          AND (e.date < CURDATE() OR e.status = 'completed')

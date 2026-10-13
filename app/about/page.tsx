@@ -19,6 +19,7 @@ import {
   Eye,
   Ticket,
   RefreshCw,
+  Rocket,
 } from 'lucide-react';
 import type { Metadata } from 'next';
 
@@ -32,14 +33,13 @@ export default function AboutPage() {
   return (
     <div className="min-h-screen bg-background pb-24">
       {/* ── Hero Section ── */}
-      <section className="relative bg-foreground py-20 md:py-28 overflow-hidden text-white">
+      <section className="relative bg-secondary py-20 md:py-28 overflow-hidden text-white">
         <div className="absolute inset-0 opacity-25 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary via-background to-transparent pointer-events-none" />
 
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/20 border border-primary/30 text-primary text-xs font-black uppercase tracking-widest mb-6">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-white text-xs font-black uppercase tracking-widest mb-6">
             <span>Ticket Yako, M&apos;manja Mwako</span>
           </div>
-
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-black tracking-tighter uppercase mb-6 leading-none">
             About <span className="text-primary italic">Zosavuta</span>
           </h1>
@@ -65,7 +65,7 @@ export default function AboutPage() {
               <Button
                 size="lg"
                 variant="outline"
-                className="border-white/30 text-white hover:bg-white/10 font-bold px-8 h-13 rounded-2xl text-sm uppercase tracking-wider gap-2 cursor-pointer"
+                className="border-primary/30 bg-transparent text-white hover:bg-primary/20 hover:text-white font-bold px-8 h-12 rounded-xl text-xs uppercase tracking-wider cursor-pointer"
               >
                 Sell Tickets
                 <ArrowRight className="w-4 h-4" />
@@ -385,7 +385,7 @@ export default function AboutPage() {
                     <strong className="text-foreground">
                       Discover in one place:
                     </strong>{' '}
-                    Find events across Malawi — concerts, football matches,
+                    Find events across Malawi — concerts, parties, workshops,
                     conferences, festivals, theatre, and more.
                   </span>
                 </li>
@@ -448,7 +448,7 @@ export default function AboutPage() {
                 <Link href="/events">
                   <Button
                     variant="outline"
-                    className="w-full rounded-xl font-bold"
+                    className="w-full rounded-xl font-bold cursor-pointer bg-card text-foreground hover:bg-primary/10 hover:text-primary gap-2"
                   >
                     Browse Events
                   </Button>
@@ -458,7 +458,7 @@ export default function AboutPage() {
 
             {/* ── For Organizers ── */}
             <Card className="p-8 border border-border/70 shadow-lg rounded-3xl bg-card space-y-6 hover:border-primary/40 transition-all">
-              <div className="w-12 h-12 rounded-2xl bg-secondary/10 text-secondary-foreground flex items-center justify-center">
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
                 <Users className="w-6 h-6" />
               </div>
 
@@ -484,6 +484,18 @@ export default function AboutPage() {
                     </strong>{' '}
                     Set your event details, ticket tiers such as Standard,
                     VIP, and VVIP, pricing, capacity, and early-bird offers.
+                  </span>
+                </li>
+
+                <li className="flex items-start gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+
+                  <span>
+                    <strong className="text-foreground">
+                      Manage & Print Physical Tickets:
+                    </strong>{' '}
+                    Issue and manage physical tickets for over-the-counter sales
+                    or gate distribution.
                   </span>
                 </li>
 
@@ -530,7 +542,7 @@ export default function AboutPage() {
 
               <div className="pt-2">
                 <Link href="/organizer">
-                  <Button className="w-full rounded-xl font-bold bg-primary text-primary-foreground hover:bg-primary/90">
+                  <Button className="w-full rounded-xl font-bold bg-primary text-primary-foreground hover:bg-primary/90  cursor-pointer">
                     Create an Event
                   </Button>
                 </Link>
@@ -593,20 +605,20 @@ export default function AboutPage() {
 
             {/* Drive Innovation */}
             <Card className="p-6 border border-border/80 bg-card rounded-2xl space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center">
-                <Sparkles className="w-5 h-5" />
-              </div>
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+              <Rocket className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
 
-              <h3 className="text-lg font-black text-foreground">
-                Drive Innovation
-              </h3>
+            <h3 className="text-lg font-black text-foreground">
+              Drive Innovation
+            </h3>
 
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Leverage modern technology to formalize and modernize
-                Malawi&apos;s event ecosystem and contribute meaningfully to
-                the Malawi Digital Transformation Agenda.
-              </p>
-            </Card>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Leverage modern technology to formalize and modernize
+              Malawi&apos;s event ecosystem and contribute meaningfully to
+              the Malawi Digital Transformation Agenda.
+            </p>
+          </Card>
           </div>
         </section>
 
@@ -660,7 +672,7 @@ export default function AboutPage() {
 
             {/* Transparency */}
             <Card className="p-8 border border-border/70 rounded-3xl bg-card space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
                 <Eye className="w-6 h-6" />
               </div>
 
@@ -678,7 +690,7 @@ export default function AboutPage() {
         </section>
 
         {/* ── Quote & Closing Mantra Banner ── */}
-        <section className="relative overflow-hidden rounded-3xl bg-foreground text-white p-8 sm:p-14 text-center space-y-6">
+        <section className="relative overflow-hidden rounded-3xl bg-secondary text-white p-8 sm:p-14 text-center space-y-6">
           <div className="max-w-3xl mx-auto space-y-4">
             <p className="text-primary font-black uppercase tracking-widest text-xs">
               The Zosavuta Standard
@@ -702,20 +714,20 @@ export default function AboutPage() {
             <Link href="/events">
               <Button
                 size="lg"
-                className="bg-primary hover:bg-primary/90 text-primary-foreground font-black px-8 h-12 rounded-xl text-xs uppercase tracking-wider"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-black px-8 h-12 rounded-xl text-xs uppercase tracking-wider cursor-pointer"
               >
                 Browse Events Now
               </Button>
             </Link>
 
             <Link href="/support">
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-white/30 text-white hover:bg-white/10 font-bold px-8 h-12 rounded-xl text-xs uppercase tracking-wider"
-              >
-                Talk to Our Team
-              </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="border-primary/30 bg-transparent text-white hover:bg-primary/20 hover:text-white font-bold px-8 h-12 rounded-xl text-xs uppercase tracking-wider cursor-pointer"
+            >
+              Talk to Our Team
+            </Button>
             </Link>
           </div>
         </section>

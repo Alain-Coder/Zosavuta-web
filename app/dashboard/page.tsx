@@ -18,11 +18,12 @@ import {
 } from 'lucide-react';
 // import { getBookingsByUser as getBusBookingsByUser } from '@/lib/bus/api';
 import { useAuth } from '@/hooks/use-auth';
+import { getAuthHeaders } from '@/lib/auth-client';
 import { canOrganize, isAdmin, canAttend, UserRole } from '@/lib/roles';
 import { auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { toast } from 'sonner';
-import SellerFinancePanel from '@/components/seller-finance-panel';
+import AttendeeFinancePanel from '@/components/attendee-finance-panel';
 
 interface Booking {
   id: string;
@@ -111,7 +112,7 @@ export default function AttendeeDashboard() {
         // 1. Strictly verify user role first
         let roleRes: Response;
         try {
-          roleRes = await fetch(`/api/users/${user.uid}`);
+          roleRes = await fetch(`/api/users/${user.uid}`, { headers: await getAuthHeaders() });
         } catch {
           toast.error('Network error: Unable to verify account permissions.');
           await signOut(auth);
@@ -293,7 +294,7 @@ export default function AttendeeDashboard() {
         </Link>
       </div>
 
-      <div className="mb-12"><SellerFinancePanel /></div>
+      <div className="mb-12"><AttendeeFinancePanel /></div>
 
       {featuredEvents.length > 0 && (
         <section className="mb-12">

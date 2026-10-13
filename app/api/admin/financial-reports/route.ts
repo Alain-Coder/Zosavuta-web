@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
       `SELECT COALESCE(SUM(o.totalAmount), 0) AS grossPrimarySales,
               COUNT(*) AS primaryOrderCount
        FROM orders o
-       LEFT JOIN events e ON e.id = o.eventId
+       LEFT JOIN events e ON e.legacyId = o.eventId
        LEFT JOIN users u ON u.uid = e.organizerId
        WHERE o.paymentStatus = 'PAID'
        ${orderDateCond} ${organizerCond}`,
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
       `SELECT COALESCE(SUM(pt.price), 0) AS grossPhysicalSales,
               COUNT(*) AS physicalSoldCount
        FROM physical_tickets pt
-       LEFT JOIN events e ON e.id = pt.eventId
+       LEFT JOIN events e ON e.legacyId = pt.eventId
        LEFT JOIN users u ON u.uid = e.organizerId
        WHERE pt.status IN ('SOLD', 'USED')
        ${ptDateCond} ${organizerCond}`,
@@ -103,14 +103,14 @@ export async function GET(req: NextRequest) {
          COALESCE(SUM(o.totalAmount), 0) + COALESCE(pt_agg.physicalRev, 0) AS totalRevenue
        FROM users u
        LEFT JOIN events e ON e.organizerId = u.uid
-       LEFT JOIN orders o ON o.eventId = e.id AND o.paymentStatus = 'PAID' ${orderDateCond.replace('o.', 'o.')}
+       LEFT JOIN orders o ON o.eventId = e.legacyId AND o.paymentStatus = 'PAID' ${orderDateCond.replace('o.', 'o.')}
        LEFT JOIN (
          SELECT pt.eventId,
                 SUM(pt.status IN ('SOLD','USED')) AS physicalSold,
                 SUM(CASE WHEN pt.status IN ('SOLD','USED') THEN pt.price ELSE 0 END) AS physicalRev
          FROM physical_tickets pt
          GROUP BY pt.eventId
-       ) pt_agg ON pt_agg.eventId = e.id
+       ) pt_agg ON pt_agg.eventId = e.legacyId
        WHERE u.role IN ('organizer', 'customer_organizer')
        ${organizerCond}
        GROUP BY u.uid, u.fullName

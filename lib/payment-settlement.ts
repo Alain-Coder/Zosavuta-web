@@ -1,6 +1,7 @@
 import pool from '@/lib/db';
 import { calculatePrimaryOrderFees, calculateResaleFees } from '@/lib/fees';
 import { recordTicketOwnershipHistory } from '@/lib/tickets';
+import { sendOrderTicketsEmail } from '@/lib/ticket-email';
 import { randomBytes } from 'crypto';
 
 export async function completeVerifiedPayment(paymentId: string, orderId: string, providerReference: string) {
@@ -14,6 +15,7 @@ export async function completeVerifiedPayment(paymentId: string, orderId: string
 
     if (payment.status === 'PAID') {
       await conn.commit();
+      await sendOrderTicketsEmail(orderId);
       return;
     }
 
@@ -36,12 +38,14 @@ export async function completeVerifiedPayment(paymentId: string, orderId: string
 
     // Check if this order is a Secondary Resale purchase
     const [resaleRows] = await conn.execute(
-      'SELECT id, ticketId, orderId, sellerId, price FROM resale_listings WHERE (id = ? OR reservedBy = ?) AND status IN (\'ACTIVE\', \'RESERVED\') LIMIT 1 FOR UPDATE',
-      [order.tier, order.userId]
+      'SELECT id, ticketId, orderId, sellerId, price FROM resale_listings WHERE id = ? AND status IN (\'ACTIVE\', \'RESERVED\') LIMIT 1 FOR UPDATE',
+      [order.tier]
     );
     const resaleListing = (resaleRows as { id: string; ticketId: number | null; orderId: string; sellerId: string; price: number }[])[0];
 
-    if (resaleListing && (order.tier === resaleListing.id || order.id.startsWith('ORD-RESALE-'))) {
+    if (order.id.startsWith('ORD-RESALE-')) {
+      if (!resaleListing) throw new Error(`Resale listing not found for order ${orderId}`);
+
       // ─── SECONDARY RESALE FINALIZATION ───
       await conn.execute(
         `UPDATE resale_listings SET status = 'SOLD', soldAt = NOW() WHERE id = ?`,
@@ -57,23 +61,26 @@ export async function completeVerifiedPayment(paymentId: string, orderId: string
         targetTicketId = (candidateRows as any[])[0]?.id;
       }
 
-      if (targetTicketId) {
-        // Issue fresh cryptographically secure verification token to new buyer, invalidating old seller's QR
-        const newVerificationToken = randomBytes(32).toString('hex');
-        await conn.execute(
-          `UPDATE order_tickets SET currentOwnerId = ?, orderId = ?, listedForResale = 0, verificationToken = ? WHERE id = ?`,
-          [order.userId, orderId, newVerificationToken, targetTicketId]
-        );
+      if (!targetTicketId) throw new Error(`Resale ticket not found for listing ${resaleListing.id}`);
 
-        await recordTicketOwnershipHistory(
-          targetTicketId,
-          resaleListing.sellerId,
-          order.userId,
-          orderId,
-          resaleListing.id,
-          conn
-        );
+      // Issue a fresh token so the emailed ticket belongs only to the new buyer.
+      const newVerificationToken = randomBytes(32).toString('hex');
+      const [ticketUpdate] = await conn.execute(
+        `UPDATE order_tickets SET currentOwnerId = ?, orderId = ?, listedForResale = 0, verificationToken = ? WHERE id = ?`,
+        [order.userId, orderId, newVerificationToken, targetTicketId]
+      );
+      if (Number((ticketUpdate as { affectedRows: number }).affectedRows) !== 1) {
+        throw new Error(`Unable to transfer resale ticket ${targetTicketId} to buyer`);
       }
+
+      await recordTicketOwnershipHistory(
+        targetTicketId,
+        resaleListing.sellerId,
+        order.userId,
+        orderId,
+        resaleListing.id,
+        conn
+      );
 
       const feeBreakdown = await calculateResaleFees(resaleListing.price);
 
@@ -103,7 +110,7 @@ export async function completeVerifiedPayment(paymentId: string, orderId: string
       const [ticketCountRows] = await conn.execute('SELECT COUNT(*) AS count FROM order_tickets WHERE orderId = ?', [orderId]);
       const ticketCount = Number((ticketCountRows as { count: number }[])[0].count);
 
-      const [eventRows] = await conn.execute('SELECT organizerId FROM events WHERE id = ?', [order.eventId]);
+      const [eventRows] = await conn.execute('SELECT organizerId FROM events WHERE legacyId = ?', [order.eventId]);
       const organizerId = (eventRows as { organizerId: string }[])[0]?.organizerId;
 
       for (let index = ticketCount; index < order.quantity; index += 1) {
@@ -127,7 +134,7 @@ export async function completeVerifiedPayment(paymentId: string, orderId: string
       }
 
       await conn.execute(
-        'UPDATE events SET ticketsAvailable = ticketsAvailable - ? WHERE id = ? AND ticketsAvailable >= ?',
+        'UPDATE events SET ticketsAvailable = ticketsAvailable - ? WHERE legacyId = ? AND ticketsAvailable >= ?',
         [order.quantity, order.eventId, order.quantity]
       );
 
@@ -158,6 +165,7 @@ export async function completeVerifiedPayment(paymentId: string, orderId: string
     }
 
     await conn.commit();
+    await sendOrderTicketsEmail(orderId);
   } catch (error) {
     await conn.rollback();
     throw error;

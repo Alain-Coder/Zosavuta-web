@@ -19,6 +19,10 @@ export const PLATFORM_FEE_PERCENT = 8.0;
 export const BANK_PAYOUT_PERCENT = 1.7;
 export const BANK_PAYOUT_FIXED_FEE = 700.0;
 
+// Mobile Money Payout Fees for attendee resale withdrawals:
+export const AIRTEL_PAYOUT_PERCENT = 1.8; // 1.8% for Airtel Money
+export const TNM_PAYOUT_PERCENT = 1.5;    // 1.5% for TNM Mpamba
+
 // PayChangu collection fees (absorbed by platform, not charged to customer or deducted from organizer balance)
 export const PAYCHANGU_COLLECTION_FEES = {
   MOBILE_MONEY: 3.0,
@@ -121,6 +125,31 @@ export async function calculatePayoutFees(requestedAmount: number) {
     payoutFee,
     netPayoutAmount,
     method: 'BANK_TRANSFER' as const,
+  };
+}
+
+/**
+ * Calculates Mobile Money Payout Fees for Attendee Ticket Resale Withdrawals.
+ * Airtel Money: 1.8%
+ * TNM Mpamba: 1.5%
+ */
+export function calculateMobilePayoutFees(
+  requestedAmount: number,
+  operator: 'Airtel Money' | 'Tnm Mpamba' | 'AIRTEL' | 'TNM' | string
+) {
+  const amount = Number(requestedAmount);
+  const isAirtel = String(operator).toUpperCase().includes('AIRTEL');
+  const percent = isAirtel ? AIRTEL_PAYOUT_PERCENT : TNM_PAYOUT_PERCENT;
+  const payoutFee = Math.round((amount * (percent / 100)) * 100) / 100;
+  const netPayoutAmount = Math.max(0, Math.round((amount - payoutFee) * 100) / 100);
+
+  return {
+    requestedAmount: amount,
+    percent,
+    payoutFee,
+    netPayoutAmount,
+    operator: isAirtel ? ('Airtel Money' as const) : ('Tnm Mpamba' as const),
+    method: 'MOBILE_MONEY' as const,
   };
 }
 

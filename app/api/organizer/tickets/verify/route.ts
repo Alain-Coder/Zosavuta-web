@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     const [rows] = await connection.execute(
       `SELECT t.id, t.ticketNumber, t.status, o.tier AS ticketType, o.eventId, o.eventTitle, o.eventDate, o.eventTime, o.eventVenue
        FROM order_tickets t JOIN orders o ON o.id = t.orderId
-       JOIN events e ON e.id = o.eventId
+       JOIN events e ON e.legacyId = o.eventId
        WHERE t.verificationToken = ? AND e.organizerId = ? LIMIT 1 FOR UPDATE`,
       [token, user.uid]
     );

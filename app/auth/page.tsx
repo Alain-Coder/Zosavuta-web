@@ -56,12 +56,16 @@ function AuthContent() {
   const fetchUserRoleStrict = async (uid: string): Promise<UserRole> => {
     let res: Response;
     try {
-      res = await fetch(`/api/users/${uid}`);
+      res = await fetch(`/api/users/${uid}`, { headers: await getAuthHeaders() });
     } catch {
       throw new Error('Network error: Unable to connect to server. Please check your internet connection.');
     }
 
     if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 403 && data.code === 'EMAIL_NOT_VERIFIED') {
+        throw new Error('EMAIL_NOT_VERIFIED');
+      }
       if (res.status === 404) {
         throw new Error('Account role could not be verified. Please contact support.');
       }
@@ -110,7 +114,7 @@ function AuthContent() {
           const res = await fetch('/api/users', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
-            body: JSON.stringify({ uid: user.uid, fullName, email, role }),
+            body: JSON.stringify({ uid: user.uid, fullName, role }),
           });
           if (!res.ok) {
             throw new Error('Failed to register account profile in database.');
@@ -121,7 +125,17 @@ function AuthContent() {
         }
 
         setSessionExpiry(rememberMe);
-        router.push(getPostAuthPath(role, redirectPath));
+        try {
+          const verificationResponse = await fetch('/api/auth/email-verification/send', {
+            method: 'POST',
+            headers: await getAuthHeaders(),
+          });
+          router.push(verificationResponse.ok
+            ? '/email-verification'
+            : '/email-verification?sendFailed=1');
+        } catch {
+          router.push('/email-verification?sendFailed=1');
+        }
       } else {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
@@ -131,6 +145,11 @@ function AuthContent() {
           setSessionExpiry(rememberMe);
           router.push(getPostAuthPath(userRole, redirectPath));
         } catch (roleErr: any) {
+          if (roleErr instanceof Error && roleErr.message === 'EMAIL_NOT_VERIFIED') {
+            setSessionExpiry(rememberMe);
+            router.push('/email-verification');
+            return;
+          }
           // If MySQL role wasn't available or network issues:
           // Immediately sign out so user isn't left in half-authenticated state
           await signOut(auth);

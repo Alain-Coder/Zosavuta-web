@@ -228,7 +228,7 @@ export default function HomePage() {
               <Button
                 variant="outline"
                 onClick={() => { setSearchTerm(''); setCategoryFilter('all'); }}
-                className="mt-8 rounded-full px-8 border-primary text-primary font-bold hover:bg-primary/5"
+                className="mt-8 rounded-full px-8 border-primary text-primary font-bold hover:text-primary hover:bg-primary/5"
               >
                 Clear all filters
               </Button>

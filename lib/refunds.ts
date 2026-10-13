@@ -27,7 +27,7 @@ export async function processTicketRefund(
     const order = (orderRows as any[])[0];
     if (!order) throw new Error('Order not found');
 
-    const [eventRows] = await conn.execute('SELECT organizerId FROM events WHERE id = ?', [order.eventId]);
+    const [eventRows] = await conn.execute('SELECT organizerId FROM events WHERE legacyId = ?', [order.eventId]);
     const organizerId = (eventRows as any[])[0]?.organizerId;
 
     const singleTicketAmount = order.quantity > 0 ? Number(order.price) : Number(order.totalAmount);
@@ -47,7 +47,7 @@ export async function processTicketRefund(
     await conn.execute(`UPDATE orders SET paymentStatus = ? WHERE id = ?`, [newPaymentStatus, order.orderId || order.id]);
 
     // Restock ticket availability
-    await conn.execute('UPDATE events SET ticketsAvailable = ticketsAvailable + 1 WHERE id = ?', [order.eventId]);
+    await conn.execute('UPDATE events SET ticketsAvailable = ticketsAvailable + 1 WHERE legacyId = ?', [order.eventId]);
 
     // Record reversal ledger entries
     if (organizerId) {
@@ -91,7 +91,7 @@ export async function processTicketRefund(
 }
 
 export async function processEventCancellation(
-  eventId: number,
+  eventId: string,
   reason: string,
   adminId: string,
   adminRole: string = 'SYSTEM_ADMINISTRATOR'
@@ -100,7 +100,7 @@ export async function processEventCancellation(
   try {
     await conn.beginTransaction();
 
-    const [eventRows] = await conn.execute('SELECT id, title, organizerId, status FROM events WHERE id = ? FOR UPDATE', [eventId]);
+    const [eventRows] = await conn.execute('SELECT id, legacyId, title, organizerId, status FROM events WHERE id = ? FOR UPDATE', [eventId]);
     const event = (eventRows as any[])[0];
     if (!event) throw new Error('Event not found');
 
@@ -109,7 +109,7 @@ export async function processEventCancellation(
     // Fetch all tickets for event
     const [tickets] = await conn.execute(
       `SELECT t.id FROM order_tickets t JOIN orders o ON t.orderId = o.id WHERE o.eventId = ? AND t.status = 'VALID'`,
-      [eventId]
+      [event.legacyId]
     );
 
     let refundedTicketsCount = 0;
@@ -123,7 +123,7 @@ export async function processEventCancellation(
     }
 
     // Block organizer payouts for this event
-    await conn.execute(`UPDATE orders SET payoutStatus = 'BLOCKED' WHERE eventId = ?`, [eventId]);
+    await conn.execute(`UPDATE orders SET payoutStatus = 'BLOCKED' WHERE eventId = ?`, [event.legacyId]);
 
     await logFinancialAudit(
       {
@@ -165,7 +165,7 @@ export async function processChargeback(
     const [orderRows] = await conn.execute('SELECT id, userId, eventId FROM orders WHERE id = ?', [payment.orderId]);
     const order = (orderRows as any[])[0];
 
-    const [eventRows] = await conn.execute('SELECT organizerId FROM events WHERE id = ?', [order?.eventId]);
+    const [eventRows] = await conn.execute('SELECT organizerId FROM events WHERE legacyId = ?', [order?.eventId]);
     const organizerId = (eventRows as any[])[0]?.organizerId;
 
     await conn.execute(`UPDATE payments SET status = 'REFUNDED' WHERE id = ?`, [paymentId]);

@@ -37,6 +37,7 @@ export interface TicketItem {
 interface Booking {
   id: string;
   eventId: string;
+  eventPublicId?: string;
   eventTitle: string;
   eventDate: string;
   eventTime: string;
@@ -126,7 +127,7 @@ export default function MyBookingsPage() {
     }
     const checkRoleAndFetch = async () => {
       try {
-        const res = await fetch(`/api/users/${user.uid}`);
+        const res = await fetch(`/api/users/${user.uid}`, { headers: await getAuthHeaders() });
         if (res.ok) {
           const data = await res.json();
           if (data.role === 'organizer') {
@@ -271,9 +272,9 @@ function BookingCard({
 
   useEffect(() => {
     const checkSoldOut = async () => {
-      if (!booking.eventId) return;
+      if (!booking.eventPublicId) return;
       try {
-        const res = await fetch(`/api/events/${booking.eventId}`);
+        const res = await fetch(`/api/events/${booking.eventPublicId}`);
         if (res.ok) {
           const eventData = await res.json();
           setIsSoldOut(eventData.ticketsAvailable <= 0 || eventData.status === 'sold_out');
@@ -283,7 +284,7 @@ function BookingCard({
       }
     };
     checkSoldOut();
-  }, [booking.eventId]);
+  }, [booking.eventPublicId]);
 
   const statusColors: Record<string, string> = {
     confirmed: 'bg-green-100 text-green-800',

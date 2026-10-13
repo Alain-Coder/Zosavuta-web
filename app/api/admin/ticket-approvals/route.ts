@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomBytes } from 'crypto';
 import { query, execute } from '@/lib/db';
 import { getUserAdminRole } from '@/lib/security-controls';
 import { getAuthUser } from '@/lib/auth-server';
@@ -75,10 +76,12 @@ export async function POST(req: NextRequest) {
 
       let eventId = sub.eventId;
       if (!eventId) {
+        const publicEventId = randomBytes(12).toString('hex');
         const result = await execute(
-          `INSERT INTO events (title, description, fullDescription, category, date, time, location, venue, image, price, ticketsTotal, ticketsAvailable, organizerId, status, busTransport, seatingChart, ticketTypes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+          `INSERT INTO events (id, title, description, fullDescription, category, date, time, location, venue, image, price, ticketsTotal, ticketsAvailable, organizerId, status, busTransport, seatingChart, ticketTypes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
           [
+            publicEventId,
             sub.title,
             sub.description,
             sub.fullDescription,
@@ -100,7 +103,7 @@ export async function POST(req: NextRequest) {
         eventId = result.insertId;
       } else {
         await execute(
-          `UPDATE events SET status = 'active', price = ?, ticketsTotal = ?, ticketsAvailable = ?, ticketTypes = ? WHERE id = ?`,
+          `UPDATE events SET status = 'active', price = ?, ticketsTotal = ?, ticketsAvailable = ?, ticketTypes = ? WHERE legacyId = ?`,
           [standardPrice, sub.ticketsTotal || 0, sub.ticketsTotal || 0, ticketTypesJson, eventId]
         );
       }

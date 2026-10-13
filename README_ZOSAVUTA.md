@@ -206,6 +206,7 @@ vercel --prod
 ### Environment Variables on Vercel
 
 Add all Firebase credentials and payment API keys to Vercel project settings under "Environment Variables".
+Set `CRON_SECRET` there as well; the hourly payout reconciliation job uses it to authorize `/api/cron/reconcile-payouts` and retry payouts that remain in `PROCESSING` for at least 10 minutes.
 
 ## Navigation
 

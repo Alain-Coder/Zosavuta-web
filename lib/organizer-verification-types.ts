@@ -74,6 +74,7 @@ export interface ShareholderMember {
 export interface PayoutDetails {
   method: 'bank' | 'mobile_money';
   bankName?: string;
+  bankUuid?: string;
   accountNumber?: string;
   accountName?: string;
   mobileProvider?: 'Airtel Money' | 'TNM Mpamba' | 'Other';

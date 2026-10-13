@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   const isAdmin = authUser.role === 'admin' || authUser.adminRole != null;
   const isOrganizer = canOrganizeEvents(authUser);
 
-  let sql = 'SELECT * FROM orders WHERE 1=1';
+  let sql = 'SELECT o.*, e.id AS eventPublicId FROM orders o LEFT JOIN events e ON e.legacyId = o.eventId WHERE 1=1';
   const params: any[] = [];
 
   if (isAdmin) {
@@ -32,15 +32,15 @@ export async function GET(req: NextRequest) {
   } else if (isOrganizer && eventId && !requestedUserId) {
     // Organizers can see orders for a specific event (for check-in / management)
     // but cannot query orders for arbitrary users
-    sql += ' AND organizerId = ?'; params.push(authUser.uid);
+    sql += ' AND o.organizerId = ?'; params.push(authUser.uid);
   } else {
     // Regular users (and organizers without an eventId) only see their own orders
-    sql += ' AND userId = ?'; params.push(authUser.uid);
+    sql += ' AND o.userId = ?'; params.push(authUser.uid);
   }
 
-  if (eventId) { sql += ' AND eventId = ?'; params.push(eventId); }
-  if (status) { sql += ' AND status = ?'; params.push(status); }
-  sql += ' ORDER BY createdAt DESC';
+  if (eventId) { sql += ' AND o.eventId = ?'; params.push(eventId); }
+  if (status) { sql += ' AND o.status = ?'; params.push(status); }
+  sql += ' ORDER BY o.createdAt DESC';
 
   const rows = await query(sql, params);
 
@@ -96,9 +96,9 @@ export async function POST(req: NextRequest) {
   const {
     eventId, quantity, tier = 'Regular', firstName, lastName, email, phone, paymentMethod,
   } = body;
-  const parsedEventId = Number(eventId);
+  const publicEventId = String(eventId || '').toLowerCase();
   const parsedQuantity = Number(quantity);
-  if (!Number.isInteger(parsedEventId) || !Number.isInteger(parsedQuantity) || parsedQuantity < 1) {
+  if (!/^[a-f0-9]{24}$/.test(publicEventId) || !Number.isInteger(parsedQuantity) || parsedQuantity < 1) {
     return NextResponse.json({ error: 'A valid event and quantity are required' }, { status: 400 });
   }
 
@@ -118,9 +118,9 @@ export async function POST(req: NextRequest) {
     }
 
     const [eventRows] = await conn.execute(
-      `SELECT id, title, organizerId, date, time, location, venue, image, price, ticketTypes, ticketsAvailable, status
+      `SELECT id, legacyId, title, organizerId, date, time, location, venue, image, price, ticketTypes, ticketsAvailable, status
        FROM events WHERE id = ? FOR UPDATE`,
-      [parsedEventId]
+      [publicEventId]
     );
     const events = eventRows as Record<string, unknown>[];
     if (!events.length || events[0].status !== 'active') {
@@ -128,6 +128,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Event is not available for purchase' }, { status: 400 });
     }
     const event = events[0];
+    const eventDatabaseId = Number(event.legacyId);
 
     const isOrganizerApproved = await checkOrganizerIsApproved(String(event.organizerId));
     if (!isOrganizerApproved) {
@@ -172,7 +173,7 @@ export async function POST(req: NextRequest) {
         eventVenue, eventImage, quantity, price, totalAmount, status, tier, firstName, lastName,
         email, phone, paymentMethod, busTransport)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [orderId, user.uid, parsedEventId, event.title ?? null, event.date ?? null, event.time ?? null, event.location ?? null,
+      [orderId, user.uid, eventDatabaseId, event.title ?? null, event.date ?? null, event.time ?? null, event.location ?? null,
         event.venue ?? null, event.image ?? null, parsedQuantity, unitPrice, totalAmount, 'pending', selectedType.name,
         firstName ?? null, lastName ?? null, email || user.email || `${user.uid}@unknown.local`, phone ?? null, paymentMethod ?? null, 0]
     );

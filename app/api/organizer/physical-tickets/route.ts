@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
           COUNT(pt.id) AS total,
           COALESCE(SUM(CASE WHEN pt.status IN ('SOLD', 'USED') THEN pt.price ELSE 0 END), 0) AS soldRevenue
         FROM physical_tickets pt
-        JOIN events e ON e.id = pt.eventId
+        JOIN events e ON e.legacyId = pt.eventId
         WHERE e.organizerId = ?`,
         [user.uid]
       ),
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
           COUNT(pt.id) AS total,
           COALESCE(SUM(CASE WHEN pt.status IN ('SOLD', 'USED') THEN pt.price ELSE 0 END), 0) AS soldRevenue
         FROM physical_tickets pt
-        JOIN events e ON e.id = pt.eventId
+        JOIN events e ON e.legacyId = pt.eventId
         WHERE e.organizerId = ?
         GROUP BY pt.eventId`,
         [user.uid]
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
       query<any>(
         `SELECT tal.eventId, COUNT(*) AS returned
          FROM ticket_audit_logs tal
-         JOIN events e ON e.id = tal.eventId
+         JOIN events e ON e.legacyId = tal.eventId
          WHERE e.organizerId = ? AND tal.action = 'TICKET_RETURNED_DESTROYED'
          GROUP BY tal.eventId`,
         [user.uid]
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
   const eventId = Number(eventIdParam);
   if (!Number.isInteger(eventId)) return NextResponse.json({ error: 'A valid eventId is required' }, { status: 400 });
 
-  const events = await query<any>('SELECT id, title, ticketsTotal, ticketsAvailable, organizerId FROM events WHERE id = ? AND organizerId = ?', [eventId, user.uid]);
+  const events = await query<any>('SELECT id, legacyId, title, ticketsTotal, ticketsAvailable, organizerId FROM events WHERE legacyId = ? AND organizerId = ?', [eventId, user.uid]);
   if (!events.length) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   const [counts, tickets, returnedRows] = await Promise.all([
     query<any>(`SELECT

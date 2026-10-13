@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   fullName     VARCHAR(255) NOT NULL,
   role         ENUM('customer','organizer','customer_organizer','admin') NOT NULL DEFAULT 'customer',
   provider     VARCHAR(32)  NOT NULL DEFAULT 'email',
+  emailVerified TINYINT(1)  NOT NULL DEFAULT 0,
   createdAt    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_users_email (email),
   INDEX idx_users_role (role)
@@ -16,7 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- ─── Events ───
 CREATE TABLE IF NOT EXISTS events (
-  id               INT           NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  id               CHAR(24)      NOT NULL PRIMARY KEY,
+  legacyId         INT           NOT NULL AUTO_INCREMENT UNIQUE,
   title            VARCHAR(255)  NOT NULL,
   description      TEXT,
   fullDescription  TEXT,
@@ -52,7 +54,7 @@ CREATE TABLE IF NOT EXISTS selling_points (
   contactPhone VARCHAR(64),
   createdAt   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_selling_points_event (eventId),
-  FOREIGN KEY (eventId) REFERENCES events(id) ON DELETE CASCADE
+  FOREIGN KEY (eventId) REFERENCES events(legacyId) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS physical_tickets (
@@ -72,7 +74,7 @@ CREATE TABLE IF NOT EXISTS physical_tickets (
   updatedAt      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_physical_tickets_event_status (eventId, status),
   INDEX idx_physical_tickets_selling_point (sellingPointId),
-  FOREIGN KEY (eventId) REFERENCES events(id) ON DELETE CASCADE,
+  FOREIGN KEY (eventId) REFERENCES events(legacyId) ON DELETE CASCADE,
   FOREIGN KEY (sellingPointId) REFERENCES selling_points(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
@@ -87,7 +89,7 @@ CREATE TABLE IF NOT EXISTS ticket_allocations (
   returnedAt     DATETIME,
   INDEX idx_ticket_allocations_event (eventId),
   INDEX idx_ticket_allocations_ticket (ticketId),
-  FOREIGN KEY (eventId) REFERENCES events(id) ON DELETE CASCADE,
+  FOREIGN KEY (eventId) REFERENCES events(legacyId) ON DELETE CASCADE,
   FOREIGN KEY (ticketId) REFERENCES physical_tickets(id) ON DELETE CASCADE,
   FOREIGN KEY (sellingPointId) REFERENCES selling_points(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -103,7 +105,7 @@ CREATE TABLE IF NOT EXISTS ticket_scans (
   INDEX idx_ticket_scans_event (eventId, scannedAt),
   INDEX idx_ticket_scans_ticket (ticketId),
   FOREIGN KEY (ticketId) REFERENCES physical_tickets(id) ON DELETE SET NULL,
-  FOREIGN KEY (eventId) REFERENCES events(id) ON DELETE CASCADE,
+  FOREIGN KEY (eventId) REFERENCES events(legacyId) ON DELETE CASCADE,
   FOREIGN KEY (scannedBy) REFERENCES users(uid) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
@@ -119,7 +121,7 @@ CREATE TABLE IF NOT EXISTS ticket_audit_logs (
   INDEX idx_ticket_audit_event (eventId, createdAt),
   INDEX idx_ticket_audit_ticket (ticketId),
   FOREIGN KEY (actorId) REFERENCES users(uid) ON DELETE RESTRICT,
-  FOREIGN KEY (eventId) REFERENCES events(id) ON DELETE CASCADE,
+  FOREIGN KEY (eventId) REFERENCES events(legacyId) ON DELETE CASCADE,
   FOREIGN KEY (ticketId) REFERENCES physical_tickets(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
@@ -152,7 +154,7 @@ CREATE TABLE IF NOT EXISTS event_submissions (
   INDEX idx_submissions_status (status),
   FOREIGN KEY (organizerId) REFERENCES users(uid) ON DELETE CASCADE,
   FOREIGN KEY (reviewedBy) REFERENCES users(uid) ON DELETE SET NULL,
-  FOREIGN KEY (eventId) REFERENCES events(id) ON DELETE SET NULL
+  FOREIGN KEY (eventId) REFERENCES events(legacyId) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- ─── Orders (event bookings) ───
@@ -186,7 +188,7 @@ CREATE TABLE IF NOT EXISTS orders (
   INDEX idx_orders_event (eventId),
   INDEX idx_orders_status (status),
   FOREIGN KEY (userId)  REFERENCES users(uid) ON DELETE CASCADE,
-  FOREIGN KEY (eventId) REFERENCES events(id) ON DELETE CASCADE
+  FOREIGN KEY (eventId) REFERENCES events(legacyId) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ─── Order Tickets (QR) ───
@@ -197,6 +199,29 @@ CREATE TABLE IF NOT EXISTS order_tickets (
   verificationToken CHAR(64) UNIQUE,
   FOREIGN KEY (orderId) REFERENCES orders(id) ON DELETE CASCADE,
   INDEX idx_order_tickets_order (orderId)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  uid VARCHAR(128) NOT NULL,
+  tokenHash CHAR(64) NOT NULL UNIQUE,
+  expiresAt DATETIME NOT NULL,
+  consumedAt DATETIME NULL,
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_email_verification_uid_created (uid, createdAt),
+  INDEX idx_email_verification_expiry (expiresAt),
+  FOREIGN KEY (uid) REFERENCES users(uid) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS ticket_email_deliveries (
+  orderId VARCHAR(64) NOT NULL PRIMARY KEY,
+  status ENUM('PENDING', 'SENDING', 'SENT', 'FAILED') NOT NULL DEFAULT 'PENDING',
+  attempts INT NOT NULL DEFAULT 0,
+  lastError VARCHAR(1000) NULL,
+  sentAt DATETIME NULL,
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (orderId) REFERENCES orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ─── Bus Operators ───
@@ -318,7 +343,7 @@ CREATE TABLE IF NOT EXISTS resale_listings (
   INDEX idx_resale_event (eventId),
   INDEX idx_resale_seller (sellerId),
   FOREIGN KEY (orderId)  REFERENCES orders(id) ON DELETE CASCADE,
-  FOREIGN KEY (eventId)  REFERENCES events(id) ON DELETE CASCADE,
+  FOREIGN KEY (eventId)  REFERENCES events(legacyId) ON DELETE CASCADE,
   FOREIGN KEY (sellerId) REFERENCES users(uid)  ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -346,4 +371,3 @@ CREATE TABLE IF NOT EXISTS newsletter_subscribers (
   INDEX idx_newsletter_email  (email),
   INDEX idx_newsletter_status (status)
 ) ENGINE=InnoDB;
-

@@ -16,6 +16,7 @@ import SellerFinancePanel from '@/components/seller-finance-panel';
 
 interface Event {
   id: string;
+  legacyId: number;
   title: string;
   date: string;
   time?: string;
@@ -85,7 +86,7 @@ export default function OrganizerDashboard() {
       if (!user) return;
 
       try {
-        const roleRes = await fetch(`/api/users/${user.uid}`);
+        const roleRes = await fetch(`/api/users/${user.uid}`, { headers: await getAuthHeaders() });
         if (roleRes.ok) {
           const roleData = await roleRes.json();
           setUserRole(roleData.role);

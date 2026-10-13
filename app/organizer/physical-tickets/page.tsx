@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 import { downloadTicketPdf } from '@/lib/ticket-pdf';
 import { QrScanner } from '@/components/QrScanner';
 
-type EventItem = { id: string; title: string; date: string; time: string; venue: string; ticketsTotal: number };
+type EventItem = { id: string; legacyId: number; title: string; date: string; time: string; venue: string; ticketsTotal: number };
 type Ticket = { id: string; ticketNumber: string; ticketType: string; price: number; status: string; secureToken: string; allocatedAt: string; sellingPointId?: string };
 type SellingPoint = { id: string; name: string; location?: string };
 type Inventory = { total: number; available: number; allocated: number; sold: number; used: number; returned: number };
@@ -61,7 +61,7 @@ export default function PhysicalTicketsPage() {
     if (!user) { router.push('/auth?redirect=/organizer/physical-tickets'); return; }
     const loadEvents = async () => {
       try {
-        const roleResponse = await fetch(`/api/users/${user.uid}`);
+        const roleResponse = await fetch(`/api/users/${user.uid}`, { headers: await getAuthHeaders() });
         const role = roleResponse.ok ? await roleResponse.json() : null;
         if (!role || !canOrganize(role.role)) { router.push('/dashboard'); return; }
         const headers = await getAuthHeaders();
@@ -70,8 +70,9 @@ export default function PhysicalTicketsPage() {
         const nextEvents = Array.isArray(data) ? data : data.events || [];
         setEvents(nextEvents);
         const requestedEventId = new URLSearchParams(window.location.search).get('eventId');
-        if (requestedEventId && nextEvents.some((event: EventItem) => String(event.id) === requestedEventId)) setEventId(requestedEventId);
-        else if (nextEvents[0]) setEventId(String(nextEvents[0].id));
+        const requestedEvent = nextEvents.find((event: EventItem) => event.id === requestedEventId);
+        if (requestedEvent) setEventId(String(requestedEvent.legacyId));
+        else if (nextEvents[0]) setEventId(String(nextEvents[0].legacyId));
       } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to load events'); }
     };
     loadEvents();
@@ -215,7 +216,7 @@ export default function PhysicalTicketsPage() {
     }
   };
 
-  const selectedEvent = events.find((event) => String(event.id) === eventId);
+  const selectedEvent = events.find((event) => String(event.legacyId) === eventId);
   const visibleTickets = tickets.filter((ticket) => ticket.ticketNumber.toLowerCase().includes(ticketSearch.toLowerCase()) || ticket.status.toLowerCase().includes(ticketSearch.toLowerCase()));
   const allocatedTickets = visibleTickets.filter((t) => t.status === 'ALLOCATED');
   const isAllSelected = allocatedTickets.length > 0 && allocatedTickets.every((t) => selectedTicketNumbers.has(t.ticketNumber));
@@ -259,7 +260,7 @@ export default function PhysicalTicketsPage() {
         </Button>
       </header>
 
-      <Card className="p-4"><label className="mb-2 block text-xs font-bold uppercase tracking-wider text-muted-foreground">Event</label><select value={eventId} onChange={(event) => setEventId(event.target.value)} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">Select an event</option>{events.map((event) => <option key={event.id} value={event.id}>{event.title}</option>)}</select>{selectedEvent && <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground"><CalendarIcon className="size-4" /> {selectedEvent.date} at {selectedEvent.time} · {selectedEvent.venue}</p>}</Card>
+      <Card className="p-4"><label className="mb-2 block text-xs font-bold uppercase tracking-wider text-muted-foreground">Event</label><select value={eventId} onChange={(event) => setEventId(event.target.value)} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">Select an event</option>{events.map((event) => <option key={event.id} value={event.legacyId}>{event.title}</option>)}</select>{selectedEvent && <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground"><CalendarIcon className="size-4" /> {selectedEvent.date} at {selectedEvent.time} · {selectedEvent.venue}</p>}</Card>
 
       {inventory && <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">{[['Total', inventory.total], ['Available', inventory.available], ['Allocated', inventory.allocated], ['Sold', inventory.sold], ['Used', inventory.used], ['Returned', inventory.returned]].map(([label, value]) => <Card key={String(label)} className="p-4"><p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-black">{value}</p></Card>)}</div>}
 

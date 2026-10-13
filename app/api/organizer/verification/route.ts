@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthUser, canOrganizeEvents } from '@/lib/auth-server';
+import { getAuthUser, canOrganizeEvents, hasRecentAuthentication } from '@/lib/auth-server';
 import { query, execute } from '@/lib/db';
 import {
   getVerificationByUserId,
@@ -41,6 +41,12 @@ export async function POST(req: NextRequest) {
     const user = await getAuthUser(req);
     if (!canOrganizeEvents(user)) {
       return NextResponse.json({ error: 'Organizer access is required' }, { status: 403 });
+    }
+    if (!hasRecentAuthentication(user)) {
+      return NextResponse.json(
+        { error: 'For your security, sign in again before updating organizer verification or payout details.', code: 'RECENT_AUTH_REQUIRED' },
+        { status: 403 }
+      );
     }
 
     const body = await req.json();

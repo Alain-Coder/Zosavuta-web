@@ -21,7 +21,7 @@ export async function verifyPublicTicket(token: string): Promise<PublicTicketRes
     const ticket = digitalTicket || (await connection.execute(
       `SELECT p.id, p.ticketNumber, p.status, 'PHYSICAL' AS ticketMode,
               e.title AS eventTitle, e.date AS eventDate, e.time AS eventTime, e.venue AS eventVenue
-       FROM physical_tickets p JOIN events e ON e.id = p.eventId
+       FROM physical_tickets p JOIN events e ON e.legacyId = p.eventId
        WHERE p.secureToken = ? LIMIT 1 FOR UPDATE`,
       [token]
     ).then(([rows]) => (rows as any[])[0]));

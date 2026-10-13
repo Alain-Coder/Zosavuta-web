@@ -1,6 +1,6 @@
-# PayChangu Webhook Setup
+# PayChangu Payment and Payout Webhook Setup
 
-Configure the PayChangu webhook callback to:
+Configure the PayChangu webhook callback for both payment and payout events to:
 
 ```text
 https://YOUR_PUBLIC_DOMAIN/api/payments/webhook
@@ -19,6 +19,8 @@ x-paychangu-signature: <hex-digest>
 ```
 
 `x-webhook-signature` and `signature` are also accepted. A `sha256=` prefix is supported.
+
+The single endpoint routes `api.charge.payment` to payment processing and `api.payout` to payout processing. Both event types use the same `PAYCHANGU_WEBHOOK_SECRET`; the payout is verified server-to-server before its ledger or balance is updated.
 
 The webhook then performs these checks in order:
 

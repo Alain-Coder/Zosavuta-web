@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
          SUM(CASE WHEN status IN ('SOLD', 'USED') THEN price ELSE 0 END) AS physicalRevenue
        FROM physical_tickets
        GROUP BY eventId
-     ) pt ON pt.eventId = e.id
+     ) pt ON pt.eventId = e.legacyId
      LEFT JOIN (
        SELECT 
          eventId,
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
        FROM orders
        WHERE status IN ('confirmed', 'used') OR paymentStatus = 'PAID'
        GROUP BY eventId
-     ) ord ON ord.eventId = e.id
+     ) ord ON ord.eventId = e.legacyId
      WHERE e.organizerId = ?
      ORDER BY e.date DESC, e.time DESC`,
     [user.uid]

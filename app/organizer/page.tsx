@@ -74,7 +74,7 @@ export default function CreateEventPage() {
     const fetchRole = async () => {
       if (!user) return;
       try {
-        const res = await fetch(`/api/users/${user.uid}`);
+        const res = await fetch(`/api/users/${user.uid}`, { headers: await getAuthHeaders() });
         if (res.ok) {
           const data = await res.json();
           setUserRole(data.role || '');
@@ -481,6 +481,10 @@ export default function CreateEventPage() {
                     <option value="sports">Sports</option>
                     <option value="conference">Conference</option>
                     <option value="festival">Festival</option>
+                    <option value="party">Party</option>
+                    <option value="theater">Theatre & Arts</option>
+                    <option value="lifestyle">Lifestyle</option>
+                    <option value="food">Food & Drink</option>
                     <option value="workshop">Workshop</option>
                   </select>
                 </Field>

@@ -29,15 +29,18 @@ export default function OperatorDashboard() {
       return;
     }
     if (user) {
-      fetch(`/api/users/${user.uid}`)
-        .then((res) => res.json())
-        .then((data) => {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/users/${user.uid}`, { headers: await getAuthHeaders() });
+          const data = await res.json();
           if (data.role !== 'operator') {
             toast.error('Access denied');
             router.push('/dashboard');
           }
-        })
-        .catch(() => { });
+        } catch {
+          toast.error('Unable to verify your account.');
+        }
+      })();
     }
   }, [authLoading, user, router]);
 

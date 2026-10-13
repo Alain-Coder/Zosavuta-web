@@ -65,6 +65,7 @@ export default function OrganizerVerificationPage() {
   const [residentialAddress, setResidentialAddress] = useState('');
   const [individualPayoutMethod, setIndividualPayoutMethod] = useState<'bank' | 'mobile_money'>('mobile_money');
   const [indBankName, setIndBankName] = useState('');
+  const [indBankUuid, setIndBankUuid] = useState('');
   const [indAccountNumber, setIndAccountNumber] = useState('');
   const [indAccountName, setIndAccountName] = useState('');
   const [indMobileProvider, setIndMobileProvider] = useState<'Airtel Money' | 'TNM Mpamba'>('Airtel Money');
@@ -81,13 +82,35 @@ export default function OrganizerVerificationPage() {
   const [shareholders, setShareholders] = useState<ShareholderMember[]>([]);
   const [bizPayoutMethod, setBizPayoutMethod] = useState<'bank' | 'mobile_money'>('bank');
   const [bizBankName, setBizBankName] = useState('');
+  const [bizBankUuid, setBizBankUuid] = useState('');
   const [bizAccountNumber, setBizAccountNumber] = useState('');
   const [bizAccountName, setBizAccountName] = useState('');
   const [bizMobileProvider, setBizMobileProvider] = useState<'Airtel Money' | 'TNM Mpamba'>('Airtel Money');
   const [bizMobileNumber, setBizMobileNumber] = useState('');
 
+  // Supported Banks from PayChangu Get Banks API
+  const [availableBanks, setAvailableBanks] = useState<{ uuid: string; name: string }[]>([]);
+
   const docInputRef = useRef<HTMLInputElement>(null);
   const certInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch supported banks from PayChangu Get Banks API
+  useEffect(() => {
+    async function loadBanks() {
+      try {
+        const res = await fetch('/api/banks');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.banks)) {
+            setAvailableBanks(data.banks);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load supported banks:', err);
+      }
+    }
+    loadBanks();
+  }, []);
 
   // Fetch current verification
   useEffect(() => {
@@ -116,6 +139,7 @@ export default function OrganizerVerificationPage() {
           if (v.individualPayoutDetails) {
             setIndividualPayoutMethod(v.individualPayoutDetails.method || 'mobile_money');
             setIndBankName(v.individualPayoutDetails.bankName || '');
+            setIndBankUuid(v.individualPayoutDetails.bankUuid || '');
             setIndAccountNumber(v.individualPayoutDetails.accountNumber || '');
             setIndAccountName(v.individualPayoutDetails.accountName || '');
             setIndMobileProvider(v.individualPayoutDetails.mobileProvider || 'Airtel Money');
@@ -134,6 +158,7 @@ export default function OrganizerVerificationPage() {
           if (v.businessPayoutDetails) {
             setBizPayoutMethod(v.businessPayoutDetails.method || 'bank');
             setBizBankName(v.businessPayoutDetails.bankName || '');
+            setBizBankUuid(v.businessPayoutDetails.bankUuid || '');
             setBizAccountNumber(v.businessPayoutDetails.accountNumber || '');
             setBizAccountName(v.businessPayoutDetails.accountName || '');
             setBizMobileProvider(v.businessPayoutDetails.mobileProvider || 'Airtel Money');
@@ -224,6 +249,7 @@ export default function OrganizerVerificationPage() {
       const individualPayoutDetails: PayoutDetails = {
         method: 'bank',
         bankName: indBankName,
+        bankUuid: indBankUuid,
         accountNumber: indAccountNumber,
         accountName: indAccountName,
       };
@@ -231,6 +257,7 @@ export default function OrganizerVerificationPage() {
       const businessPayoutDetails: PayoutDetails = {
         method: 'bank',
         bankName: bizBankName,
+        bankUuid: bizBankUuid,
         accountNumber: bizAccountNumber,
         accountName: bizAccountName,
       };
@@ -596,13 +623,33 @@ export default function OrganizerVerificationPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-xl border border-border bg-muted/20">
                 <div>
                   <Label className="text-xs font-bold uppercase tracking-wider">Bank Name *</Label>
-                  <Input
-                    className="mt-1.5"
-                    placeholder="e.g. National Bank of Malawi"
-                    value={indBankName}
-                    onChange={(e) => setIndBankName(e.target.value)}
-                    disabled={isApproved}
-                  />
+                  {availableBanks.length > 0 ? (
+                    <select
+                      className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      value={indBankName}
+                      onChange={(e) => {
+                        const selected = availableBanks.find((b) => b.name === e.target.value);
+                        setIndBankName(e.target.value);
+                        setIndBankUuid(selected?.uuid || '');
+                      }}
+                      disabled={isApproved}
+                    >
+                      <option value="">Select supported bank...</option>
+                      {availableBanks.map((b) => (
+                        <option key={b.uuid} value={b.name}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      className="mt-1.5"
+                      placeholder="e.g. National Bank of Malawi"
+                      value={indBankName}
+                      onChange={(e) => setIndBankName(e.target.value)}
+                      disabled={isApproved}
+                    />
+                  )}
                 </div>
                 <div>
                   <Label className="text-xs font-bold uppercase tracking-wider">Account Number *</Label>
@@ -910,13 +957,33 @@ export default function OrganizerVerificationPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-xl border border-border bg-muted/20">
                 <div>
                   <Label className="text-xs font-bold uppercase tracking-wider">Bank Name *</Label>
-                  <Input
-                    className="mt-1.5"
-                    placeholder="e.g. Standard Bank Malawi"
-                    value={bizBankName}
-                    onChange={(e) => setBizBankName(e.target.value)}
-                    disabled={isApproved}
-                  />
+                  {availableBanks.length > 0 ? (
+                    <select
+                      className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      value={bizBankName}
+                      onChange={(e) => {
+                        const selected = availableBanks.find((b) => b.name === e.target.value);
+                        setBizBankName(e.target.value);
+                        setBizBankUuid(selected?.uuid || '');
+                      }}
+                      disabled={isApproved}
+                    >
+                      <option value="">Select supported bank...</option>
+                      {availableBanks.map((b) => (
+                        <option key={b.uuid} value={b.name}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      className="mt-1.5"
+                      placeholder="e.g. Standard Bank Malawi"
+                      value={bizBankName}
+                      onChange={(e) => setBizBankName(e.target.value)}
+                      disabled={isApproved}
+                    />
+                  )}
                 </div>
                 <div>
                   <Label className="text-xs font-bold uppercase tracking-wider">Account Number *</Label>

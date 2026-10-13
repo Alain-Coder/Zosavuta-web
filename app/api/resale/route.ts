@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     FROM resale_listings r
     JOIN orders o ON o.id = r.orderId
     LEFT JOIN order_tickets t ON t.id = r.ticketId
-    LEFT JOIN events e ON e.id = r.eventId
+    LEFT JOIN events e ON e.legacyId = r.eventId
     WHERE r.status = ? AND (e.date >= CURDATE() OR e.date IS NULL)
   `;
   const params: unknown[] = [status];
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
 
   const orders = await query<{ userId: string; eventId: number; status: string; price: number; eventDate: string; quantity: number }>(
     `SELECT o.userId, o.eventId, o.status, o.price, o.quantity, e.date AS eventDate
-     FROM orders o JOIN events e ON e.id = o.eventId WHERE o.id = ? AND (e.date >= CURDATE() OR e.date IS NULL)`,
+     FROM orders o JOIN events e ON e.legacyId = o.eventId WHERE o.id = ? AND (e.date >= CURDATE() OR e.date IS NULL)`,
     [orderId]
   );
 

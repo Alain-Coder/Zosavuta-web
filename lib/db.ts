@@ -147,7 +147,7 @@ export async function getEventByIdFromDB(id: string | number): Promise<Event | n
       LIMIT 1
     `;
 
-    const [rows] = await dbPool.execute(query, [id]);
+    const [rows] = await dbPool.execute(query, [String(id).toLowerCase()]);
     if (!Array.isArray(rows) || rows.length === 0) {
       return null;
     }
@@ -158,6 +158,7 @@ export async function getEventByIdFromDB(id: string | number): Promise<Event | n
     return null;
   }
 }
+
 
 export interface ContactMessage {
   id?: number;
@@ -299,5 +300,3 @@ export async function deleteContactMessage(id: number | string): Promise<boolean
     return false;
   }
 }
-
-

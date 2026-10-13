@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomBytes } from 'crypto';
 import { query, execute } from '@/lib/db';
 import { getAuthUser, hasAdminRole } from '@/lib/auth-server';
 
@@ -46,12 +47,14 @@ export async function POST(
       );
     }
 
+    const eventId = randomBytes(12).toString('hex');
     const eventResult = await execute(
       `INSERT INTO events (
-        title, description, fullDescription, category, date, time, location, venue,
+        id, title, description, fullDescription, category, date, time, location, venue,
         image, price, ticketsTotal, ticketsAvailable, organizerId, status, busTransport, seatingChart
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
+        eventId,
         s.title,
         s.description,
         s.fullDescription,
@@ -85,7 +88,7 @@ export async function POST(
           [user.uid, user.adminRole || 'SYSTEM_ADMINISTRATOR', String(submissionId)]
     );
 
-    return NextResponse.json({ eventId: eventResult.insertId, status: 'approved' });
+    return NextResponse.json({ eventId, status: 'approved' });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Approval failed';
     return NextResponse.json({ error: message }, { status: 500 });

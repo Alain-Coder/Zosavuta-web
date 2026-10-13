@@ -6,7 +6,7 @@ export default async function VerifyTicketPage({ params }: { params: Promise<{ t
   const { token } = await params;
   const physicalInfo = await query<any>(
     `SELECT p.eventId, p.ticketNumber, p.status, p.ticketType, e.title AS eventTitle, e.date AS eventDate, e.time AS eventTime, e.venue AS eventVenue
-     FROM physical_tickets p JOIN events e ON e.id = p.eventId WHERE p.secureToken = ? LIMIT 1`,
+     FROM physical_tickets p JOIN events e ON e.legacyId = p.eventId WHERE p.secureToken = ? LIMIT 1`,
     [token]
   );
   if (physicalInfo[0]) {

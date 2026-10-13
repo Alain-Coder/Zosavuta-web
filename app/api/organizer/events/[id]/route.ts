@@ -7,7 +7,7 @@ import { checkOrganizerIsApproved } from '@/lib/organizer-verification';
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getAuthUser(req);
   if (!canOrganizeEvents(user)) return NextResponse.json({ error: 'Organizer access is required' }, { status: 403 });
-  const eventId = Number((await params).id);
+  const eventId = (await params).id;
   const events = await query<any>('SELECT * FROM events WHERE id = ? AND organizerId = ?', [eventId, user.uid]);
   if (!events.length) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   return NextResponse.json(events[0]);
@@ -16,8 +16,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getAuthUser(req);
   if (!canOrganizeEvents(user)) return NextResponse.json({ error: 'Organizer access is required' }, { status: 403 });
-  const eventId = Number((await params).id);
-  if (!Number.isInteger(eventId)) return NextResponse.json({ error: 'Invalid event ID' }, { status: 400 });
+  const eventId = (await params).id.toLowerCase();
+  if (!/^[a-f0-9]{24}$/.test(eventId)) return NextResponse.json({ error: 'Invalid event ID' }, { status: 400 });
   const current = await query<any>('SELECT * FROM events WHERE id = ? AND organizerId = ?', [eventId, user.uid]);
   if (!current.length) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   const body = await req.json();
@@ -63,11 +63,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getAuthUser(req);
   if (!canOrganizeEvents(user)) return NextResponse.json({ error: 'Organizer access is required' }, { status: 403 });
-  const eventId = Number((await params).id);
+  const eventId = (await params).id.toLowerCase();
+  if (!/^[a-f0-9]{24}$/.test(eventId)) return NextResponse.json({ error: 'Invalid event ID' }, { status: 400 });
   const current = await query<any>('SELECT * FROM events WHERE id = ? AND organizerId = ?', [eventId, user.uid]);
   if (!current.length) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
-  const orderRows = await query<any>('SELECT COUNT(*) AS count FROM orders WHERE eventId = ?', [eventId]);
-  const ticketRows = await query<any>('SELECT COUNT(*) AS count FROM physical_tickets WHERE eventId = ?', [eventId]);
+  const legacyId = Number(current[0].legacyId);
+  const orderRows = await query<any>('SELECT COUNT(*) AS count FROM orders WHERE eventId = ?', [legacyId]);
+  const ticketRows = await query<any>('SELECT COUNT(*) AS count FROM physical_tickets WHERE eventId = ?', [legacyId]);
   const hasIssuedHistory = Number(orderRows[0]?.count || 0) > 0 || Number(ticketRows[0]?.count || 0) > 0;
   if (hasIssuedHistory) {
     await execute(`UPDATE events SET status = 'cancelled' WHERE id = ? AND organizerId = ?`, [eventId, user.uid]);

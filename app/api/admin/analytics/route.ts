@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
   const [onlineRevenueRow] = await query<{ total: number }>(
     `SELECT COALESCE(SUM(o.totalAmount), 0) AS total
      FROM orders o
-     LEFT JOIN events e ON e.id = o.eventId
+     LEFT JOIN events e ON e.legacyId = o.eventId
      LEFT JOIN users u ON u.uid = e.organizerId
      WHERE o.status IN ('confirmed', 'used')
      ${orderDateCond} ${organizerCond}`,
@@ -111,7 +111,7 @@ export async function GET(req: NextRequest) {
   const [physicalRevenueRow] = await query<{ total: number }>(
     `SELECT COALESCE(SUM(pt.price), 0) AS total
      FROM physical_tickets pt
-     LEFT JOIN events e ON e.id = pt.eventId
+     LEFT JOIN events e ON e.legacyId = pt.eventId
      LEFT JOIN users u ON u.uid = e.organizerId
      WHERE pt.status IN ('SOLD', 'USED')
      ${ptDateCond} ${organizerCond}`,
@@ -143,7 +143,7 @@ export async function GET(req: NextRequest) {
   const [onlineTicketsRow] = await query<{ total: number }>(
     `SELECT COALESCE(SUM(o.quantity), 0) AS total
      FROM orders o
-     LEFT JOIN events e ON e.id = o.eventId
+     LEFT JOIN events e ON e.legacyId = o.eventId
      LEFT JOIN users u ON u.uid = e.organizerId
      WHERE o.status IN ('confirmed', 'used')
      ${orderDateCond} ${organizerCond}`,
@@ -154,7 +154,7 @@ export async function GET(req: NextRequest) {
   const [physicalTicketsRow] = await query<{ total: number }>(
     `SELECT COALESCE(COUNT(*), 0) AS total
      FROM physical_tickets pt
-     LEFT JOIN events e ON e.id = pt.eventId
+     LEFT JOIN events e ON e.legacyId = pt.eventId
      LEFT JOIN users u ON u.uid = e.organizerId
      WHERE pt.status IN ('SOLD', 'USED')
      ${ptDateCond} ${organizerCond}`,
@@ -172,7 +172,7 @@ export async function GET(req: NextRequest) {
     `SELECT DATE_FORMAT(o.createdAt, '%Y-%m-%d') AS week,
             SUM(o.totalAmount) AS revenue
      FROM orders o
-     LEFT JOIN events e ON e.id = o.eventId
+     LEFT JOIN events e ON e.legacyId = o.eventId
      LEFT JOIN users u ON u.uid = e.organizerId
      WHERE o.status IN ('confirmed', 'used')
        AND o.createdAt >= DATE_SUB(NOW(), INTERVAL 6 WEEK)
@@ -200,7 +200,7 @@ export async function GET(req: NextRequest) {
             COALESCE(SUM(o.quantity), 0) AS sold,
             COALESCE(SUM(e.ticketsAvailable), 0) AS available
      FROM events e
-     LEFT JOIN orders o ON o.eventId = e.id AND o.status IN ('confirmed', 'used')
+     LEFT JOIN orders o ON o.eventId = e.legacyId AND o.status IN ('confirmed', 'used')
      LEFT JOIN users u ON u.uid = e.organizerId
      WHERE e.status = 'active' ${organizerCond}
      GROUP BY e.category`,
@@ -218,14 +218,14 @@ export async function GET(req: NextRequest) {
             COALESCE(SUM(o.quantity), 0) + COALESCE(pt.physicalSold, 0) AS ticketsSold,
             COALESCE(SUM(o.totalAmount), 0) + COALESCE(pt.physicalRev, 0) AS revenue
      FROM events e
-     LEFT JOIN orders o ON o.eventId = e.id AND o.status IN ('confirmed', 'used')
+     LEFT JOIN orders o ON o.eventId = e.legacyId AND o.status IN ('confirmed', 'used')
      LEFT JOIN users u ON u.uid = e.organizerId
      LEFT JOIN (
        SELECT eventId,
               SUM(status IN ('SOLD','USED')) AS physicalSold,
               SUM(CASE WHEN status IN ('SOLD','USED') THEN price ELSE 0 END) AS physicalRev
        FROM physical_tickets GROUP BY eventId
-     ) pt ON pt.eventId = e.id
+     ) pt ON pt.eventId = e.legacyId
      WHERE e.status IN ('active', 'sold_out', 'completed') ${organizerCond}
      GROUP BY e.id, e.title, u.fullName, u.email, pt.physicalSold, pt.physicalRev
      ORDER BY revenue DESC, ticketsSold DESC
@@ -235,7 +235,7 @@ export async function GET(req: NextRequest) {
 
   // --- Fetch all organizer events from the events table for accurate overview ---
   const allEvents = await query<{
-    id: number;
+    id: string;
     title: string;
     description: string;
     category: string;
@@ -288,14 +288,14 @@ export async function GET(req: NextRequest) {
        FROM orders
        WHERE status IN ('confirmed', 'used')
        GROUP BY eventId
-     ) ord ON ord.eventId = e.id
+     ) ord ON ord.eventId = e.legacyId
      LEFT JOIN (
        SELECT eventId,
               SUM(status IN ('SOLD','USED')) AS physicalSold,
               SUM(CASE WHEN status IN ('SOLD','USED') THEN price ELSE 0 END) AS physicalRevenue
        FROM physical_tickets
        GROUP BY eventId
-     ) pt ON pt.eventId = e.id
+     ) pt ON pt.eventId = e.legacyId
      WHERE 1=1
      ${eventDateCond}
      ${organizerCond}
@@ -339,7 +339,7 @@ export async function GET(req: NextRequest) {
       eventCount: Number(o.eventCount || 0),
     })),
     events: allEvents.map((e) => ({
-      id: Number(e.id),
+      id: String(e.id),
       title: e.title,
       description: e.description,
       category: e.category,

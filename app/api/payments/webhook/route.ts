@@ -4,6 +4,8 @@ import { query } from '@/lib/db';
 import { verifyPayChanguTransaction } from '@/lib/paychangu';
 import { getPayChanguAppUrl } from '@/lib/paychangu';
 import { completeVerifiedPayment } from '@/lib/payment-settlement';
+import { getPayChanguPayoutDetails } from '@/lib/paychangu-payouts';
+import { applyVerifiedPayoutStatus } from '@/lib/payout-reconciliation';
 
 function isValidSignature(rawBody: string, signature: string | null): boolean {
   const secret = process.env.PAYCHANGU_WEBHOOK_SECRET;
@@ -33,6 +35,79 @@ export async function GET(req: NextRequest) {
   return NextResponse.redirect(`${appUrl}/checkout/${payments[0].orderId}?payment=pending&tx_ref=${encodeURIComponent(txRef)}`);
 }
 
+async function handlePaymentWebhook(payload: Record<string, any>) {
+  const txRef = String(
+    payload.tx_ref
+    || payload.reference
+    || payload.data?.tx_ref
+    || payload.data?.transaction?.tx_ref
+    || ''
+  );
+  if (!txRef) return NextResponse.json({ error: 'Provider reference is required' }, { status: 400 });
+
+  try {
+    const verified = await verifyPayChanguTransaction(txRef);
+    const payments = await query<{ id: string; orderId: string; amount: number; status: string }>(
+      'SELECT id, orderId, amount, status FROM payments WHERE providerReference = ? OR idempotencyKey = ?',
+      [txRef, txRef]
+    );
+    const payment = payments[0];
+    if (!payment) return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
+    if (payment.status === 'PAID') {
+      await completeVerifiedPayment(payment.id, payment.orderId, txRef);
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+    if (
+      String(verified.status).toLowerCase() !== 'success'
+      || Number(verified.amount) !== Number(payment.amount)
+      || String(verified.currency).toUpperCase() !== 'MWK'
+    ) {
+      return NextResponse.json({ error: 'Payment verification mismatch' }, { status: 400 });
+    }
+    await completeVerifiedPayment(payment.id, payment.orderId, txRef);
+    return NextResponse.json({ received: true });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Webhook processing failed' }, { status: 500 });
+  }
+}
+
+async function handlePayoutWebhook(payload: Record<string, any>) {
+  const providerRef = String(
+    payload.charge_id
+    || payload.data?.charge_id
+    || payload.data?.transaction?.charge_id
+    || payload.tx_ref
+    || ''
+  );
+  if (!providerRef) {
+    return NextResponse.json({ error: 'Provider reference is missing' }, { status: 400 });
+  }
+
+  try {
+    const details = await getPayChanguPayoutDetails(providerRef);
+    const verifiedStatus = details?.data?.transaction?.status;
+    if (typeof verifiedStatus !== 'string' || !verifiedStatus.trim()) {
+      throw new Error('PayChangu payout details did not include data.transaction.status');
+    }
+
+    const result = await applyVerifiedPayoutStatus(providerRef, verifiedStatus);
+    if (result === 'NOT_FOUND') {
+      return NextResponse.json({ error: 'Payout request not found' }, { status: 404 });
+    }
+    if (result === 'PENDING') {
+      console.info('PayChangu payout remains non-final for', providerRef, { verifiedStatus });
+      return NextResponse.json({ received: true, pending: true, verifiedStatus });
+    }
+    if (result === 'DUPLICATE') {
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+    return NextResponse.json({ received: true, finalStatus: result });
+  } catch (error) {
+    console.error('Server-to-server PayChangu verification failed for', providerRef, error);
+    return NextResponse.json({ error: 'Payout verification or reconciliation failed' }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const signature = req.headers.get('Signature')
@@ -54,28 +129,17 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid webhook payload' }, { status: 400 });
   }
-  const txRef = String(payload.tx_ref || payload.reference || payload.data?.tx_ref || '');
-  if (!txRef) return NextResponse.json({ error: 'Provider reference is required' }, { status: 400 });
 
-  try {
-    const verified = await verifyPayChanguTransaction(txRef);
-    const payments = await query<{ id: string; orderId: string; amount: number; status: string }>(
-      'SELECT id, orderId, amount, status FROM payments WHERE providerReference = ? OR idempotencyKey = ?',
-      [txRef, txRef]
-    );
-    const payment = payments[0];
-    if (!payment) return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
-    if (payment.status === 'PAID') return NextResponse.json({ received: true, duplicate: true });
-    if (
-      String(verified.status).toLowerCase() !== 'success'
-      || Number(verified.amount) !== Number(payment.amount)
-      || String(verified.currency).toUpperCase() !== 'MWK'
-    ) {
-      return NextResponse.json({ error: 'Payment verification mismatch' }, { status: 400 });
-    }
-    await completeVerifiedPayment(payment.id, payment.orderId, txRef);
-    return NextResponse.json({ received: true });
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Webhook processing failed' }, { status: 500 });
-  }
+  const eventType = String(
+    payload.event_type
+    || payload.data?.event_type
+    || payload.data?.transaction?.event_type
+    || payload.event
+    || ''
+  ).toLowerCase();
+
+  if (eventType === 'api.charge.payment') return handlePaymentWebhook(payload);
+  if (eventType === 'api.payout') return handlePayoutWebhook(payload);
+
+  return NextResponse.json({ error: 'Unsupported or missing PayChangu event type' }, { status: 400 });
 }

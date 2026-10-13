@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [events] = await connection.execute('SELECT id FROM events WHERE id = ? AND organizerId = ? FOR UPDATE', [eventId, user.uid]);
+    const [events] = await connection.execute('SELECT id FROM events WHERE legacyId = ? AND organizerId = ? FOR UPDATE', [eventId, user.uid]);
     if (!(events as any[]).length) { await connection.rollback(); return NextResponse.json({ error: 'Event not found' }, { status: 404 }); }
     const [points] = await connection.execute('SELECT id FROM selling_points WHERE id = ? AND eventId = ?', [sellingPointId, eventId]);
     if (!(points as any[]).length) { await connection.rollback(); return NextResponse.json({ error: 'Selling point not found' }, { status: 404 }); }

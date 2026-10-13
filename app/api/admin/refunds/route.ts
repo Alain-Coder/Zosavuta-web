@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
         }, { status: 403 });
       }
 
-      const result = await processEventCancellation(Number(eventId), reason || 'Event cancelled by organizer/admin', adminId, adminRole);
+      const result = await processEventCancellation(String(eventId), reason || 'Event cancelled by organizer/admin', adminId, adminRole);
       return NextResponse.json({ success: true, result });
     } else if (action === 'chargeback') {
       if (!paymentId) return NextResponse.json({ error: 'paymentId is required' }, { status: 400 });

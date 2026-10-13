@@ -16,7 +16,7 @@ function ticketId(): string {
 
 export async function ownsEvent(connection: PoolConnection, eventId: number, userId: string) {
   const [rows] = await connection.execute(
-    'SELECT id, title, date, time, location, venue, image, price, ticketsTotal, ticketsAvailable, status FROM events WHERE id = ? AND organizerId = ? FOR UPDATE',
+    'SELECT id, legacyId, title, date, time, location, venue, image, price, ticketsTotal, ticketsAvailable, status FROM events WHERE legacyId = ? AND organizerId = ? FOR UPDATE',
     [eventId, userId]
   );
   return (rows as any[])[0] || null;
@@ -69,7 +69,7 @@ export async function generatePhysicalTickets({
     }
 
     await connection.execute(
-      'UPDATE events SET ticketsAvailable = ticketsAvailable - ? WHERE id = ? AND ticketsAvailable >= ?',
+      'UPDATE events SET ticketsAvailable = ticketsAvailable - ? WHERE legacyId = ? AND ticketsAvailable >= ?',
       [quantity, eventId, quantity]
     );
     await connection.execute(
@@ -214,7 +214,7 @@ export async function scanPhysicalTicket(token: string, eventId: number, userId:
   try {
     await connection.beginTransaction();
     const [eventRows] = await connection.execute(
-      'SELECT id FROM events WHERE id = ? AND organizerId = ? FOR UPDATE',
+      'SELECT id FROM events WHERE legacyId = ? AND organizerId = ? FOR UPDATE',
       [eventId, userId]
     );
     if (!(eventRows as any[]).length) throw new Error('EVENT_NOT_FOUND');

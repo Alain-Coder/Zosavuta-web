@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { query, execute } from '@/lib/db';
 import { getUserAdminRole, checkAndRegisterDualApproval } from '@/lib/security-controls';
-import { processPayoutWithProvider, PayoutRecipientBankDetails } from '@/lib/paychangu-payouts';
+import {
+  processPayoutWithProvider,
+  processMobileMoneyPayoutWithProvider,
+  PayoutRecipientBankDetails,
+  MobileMoneyPayoutDetails,
+} from '@/lib/paychangu-payouts';
 import { getVerificationByUserId } from '@/lib/organizer-verification';
 import { calculatePayoutFees } from '@/lib/fees';
 import { getAuthUser } from '@/lib/auth-server';
@@ -35,6 +40,8 @@ export async function GET(req: NextRequest) {
           try { details = JSON.parse(details); } catch { details = null; }
         }
 
+        const isMobile = details?.method === 'MOBILE_MONEY' || Boolean(details?.phoneNumber);
+
         const verif = await getVerificationByUserId(p.sellerId);
         const rawBank = verif
           ? (verif.businessType === 'registered'
@@ -51,15 +58,17 @@ export async function GET(req: NextRequest) {
           };
         }
 
-        const fees = await calculatePayoutFees(Number(p.amount));
+        const fees = isMobile
+          ? { payoutFee: Number(p.feeAmount || 0), netPayoutAmount: Number(p.netAmount || 0) }
+          : await calculatePayoutFees(Number(p.amount));
 
         return {
           ...p,
           payoutDetails: details,
-          method: 'BANK_TRANSFER',
+          method: isMobile ? 'MOBILE_MONEY' : (details?.method || 'BANK_TRANSFER'),
           feeAmount: Number(p.feeAmount) > 0 ? Number(p.feeAmount) : fees.payoutFee,
           netAmount: Number(p.netAmount) > 0 ? Number(p.netAmount) : fees.netPayoutAmount,
-          verificationStatus: verif?.status || 'NOT_STARTED',
+          verificationStatus: verif?.status || (isMobile ? 'RESALE_ATTENDEE' : 'NOT_STARTED'),
         };
       })
     );
@@ -73,7 +82,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { payoutId, action, adminId } = body;
+    const { payoutId, action, adminId, recipientDetails } = body;
 
     if (!payoutId || !action || !adminId) {
       return NextResponse.json({ error: 'payoutId, action, and adminId are required' }, { status: 400 });
@@ -93,6 +102,9 @@ export async function POST(req: NextRequest) {
     const payoutRows = await query<any>('SELECT * FROM payout_requests WHERE id = ?', [payoutId]);
     const payout = payoutRows[0];
     if (!payout) return NextResponse.json({ error: 'Payout request not found' }, { status: 404 });
+    if (payout.status === 'COMPLETED' || payout.status === 'CANCELLED') {
+      return NextResponse.json({ error: 'Payout request has already been finalized' }, { status: 409 });
+    }
 
     const amount = Number(payout.amount);
 
@@ -132,9 +144,54 @@ export async function POST(req: NextRequest) {
         try { storedDetails = JSON.parse(storedDetails); } catch { storedDetails = null; }
       }
 
-      const bankName = storedDetails?.bankName || rawBank?.bankName;
-      const accountNumber = storedDetails?.accountNumber || rawBank?.accountNumber;
-      const accountName = storedDetails?.accountName || rawBank?.accountName || verif?.legalName || verif?.businessName || 'Organizer';
+      const isMobileMoney =
+        storedDetails?.method === 'MOBILE_MONEY' ||
+        Boolean(storedDetails?.phoneNumber) ||
+        recipientDetails?.method === 'MOBILE_MONEY' ||
+        Boolean(recipientDetails?.phoneNumber);
+
+      // ── Handle Mobile Money Payout (Attendee ticket resale withdrawals via PayChangu) ──
+      if (isMobileMoney) {
+        const operator = storedDetails?.operator || recipientDetails?.operator || 'Airtel Money';
+        const phoneNumber = storedDetails?.phoneNumber || recipientDetails?.phoneNumber;
+        const accountName = storedDetails?.accountName || recipientDetails?.accountName || 'Attendee';
+        const bankUuid = storedDetails?.bankUuid || recipientDetails?.bankUuid;
+
+        if (!phoneNumber) {
+          return NextResponse.json(
+            { error: 'Mobile money phone number is required for attendee resale payout dispatch' },
+            { status: 400 }
+          );
+        }
+
+        const dispatchResult = await processMobileMoneyPayoutWithProvider(
+          payoutId,
+          payout.sellerId,
+          amount,
+          {
+            operator,
+            phoneNumber,
+            accountName,
+            bankUuid,
+          }
+        );
+
+        return NextResponse.json({
+          success: true,
+          method: 'MOBILE_MONEY',
+          operator,
+          phoneNumber,
+          message: `Payout verified and dispatched via ${operator} to ${phoneNumber}. Net: MWK ${dispatchResult.feeDetails.netPayoutAmount.toLocaleString()}`,
+          providerReference: dispatchResult.providerReference,
+          feeDetails: dispatchResult.feeDetails,
+        });
+      }
+
+      // ── Handle Bank Transfer Payout (Organizer settlements via PayChangu) ──
+      const bankName = storedDetails?.bankName || rawBank?.bankName || recipientDetails?.bankName;
+      const bankUuid = storedDetails?.bankUuid || rawBank?.bankUuid || recipientDetails?.bankUuid;
+      const accountNumber = storedDetails?.accountNumber || rawBank?.accountNumber || recipientDetails?.accountNumber;
+      const accountName = storedDetails?.accountName || rawBank?.accountName || recipientDetails?.accountName || verif?.legalName || verif?.businessName || 'Organizer';
 
       if (!bankName || !accountNumber) {
         return NextResponse.json({
@@ -144,17 +201,31 @@ export async function POST(req: NextRequest) {
 
       const recipient: PayoutRecipientBankDetails = {
         bankName,
+        bankUuid,
         accountNumber,
         accountName,
+        bankCode: storedDetails?.bankCode || recipientDetails?.bankCode,
       };
 
       const dispatchResult = await processPayoutWithProvider(payoutId, payout.sellerId, amount, recipient);
 
       return NextResponse.json({
         success: true,
+        method: 'BANK_TRANSFER',
         message: `Payout verified and dispatched via Bank Transfer to ${bankName} (${accountNumber}). Fee: MWK ${dispatchResult.feeDetails.payoutFee.toLocaleString()}, Net: MWK ${dispatchResult.feeDetails.netPayoutAmount.toLocaleString()}`,
         providerReference: dispatchResult.providerReference,
         feeDetails: dispatchResult.feeDetails,
+      });
+    }
+
+    if (action === 'reject') {
+      const reason = body.reason || 'Rejected by administrator';
+      await execute("UPDATE payout_requests SET status = 'CANCELLED' WHERE id = ?", [payoutId]);
+      await execute('UPDATE seller_balances SET availableBalance = availableBalance + ? WHERE sellerId = ?', [amount, payout.sellerId]);
+      return NextResponse.json({
+        success: true,
+        message: 'Payout request rejected and seller balance restored.',
+        status: 'CANCELLED',
       });
     }
 

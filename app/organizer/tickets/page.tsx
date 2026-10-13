@@ -38,7 +38,7 @@ export default function OrganizerTickets() {
     if (!user) return;
     const fetchData = async () => {
       try {
-        const roleRes = await fetch(`/api/users/${user.uid}`);
+        const roleRes = await fetch(`/api/users/${user.uid}`, { headers: await getAuthHeaders() });
         if (roleRes.ok) {
           const roleData = await roleRes.json();
           if (isAdmin(roleData.role)) {

@@ -1,17 +1,18 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { 
-  Music, 
-  Trophy, 
-  Users, 
-  Palmtree, 
-  Theater, 
-  Star, 
-  Gamepad2, 
-  Heart, 
-  Utensils, 
-  ChevronRight 
+import {
+  Music,
+  Trophy,
+  Users,
+  Palmtree,
+  Theater,
+  Star,
+  Gamepad2,
+  Heart,
+  Utensils,
+  PartyPopperIcon,
+  BriefcaseIcon
 } from 'lucide-react';
 import { useRef } from 'react';
 
@@ -21,10 +22,11 @@ const categories = [
   { id: 'sports', name: 'Sports', icon: Trophy },
   { id: 'conference', name: 'Conferences', icon: Users },
   { id: 'festival', name: 'Festivals', icon: Palmtree },
-  { id: 'theater', name: 'Theatre', icon: Theater },
+  { id: 'party', name: 'Party', icon: PartyPopperIcon },
+  { id: 'theater', name: 'Theatre & Arts', icon: Theater },
   { id: 'lifestyle', name: 'Lifestyle', icon: Heart },
   { id: 'food', name: 'Food & Drink', icon: Utensils },
-  { id: 'workshop', name: 'Workshops', icon: Gamepad2 },
+  { id: 'workshop', name: 'Workshops', icon: BriefcaseIcon },
 ];
 
 interface CategoryChipsProps {
@@ -36,23 +38,24 @@ export default function CategoryChips({ selectedCategory, onSelectCategory }: Ca
   const scrollRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="relative group">
-      <div 
+    <div className="relative group min-w-0 flex-1">
+      <div
         ref={scrollRef}
-        className="flex items-center gap-3 overflow-x-auto pb-4 no-scrollbar scroll-smooth"
+        className="flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth py-1
+                   md:flex-wrap md:overflow-visible"
       >
         {categories.map((cat) => {
           const Icon = cat.icon;
           const isSelected = selectedCategory === cat.id;
-          
+
           return (
             <button
               key={cat.id}
               onClick={() => onSelectCategory(cat.id)}
               className={cn(
                 "flex items-center gap-2 px-3 py-2 rounded-full border text-[13px] font-semibold uppercase tracking-[0.04em] transition-all duration-200 whitespace-nowrap min-w-fit",
-                isSelected 
-                  ? "bg-primary text-primary-foreground border-primary shadow-sm shadow-primary/20" 
+                isSelected
+                  ? "bg-primary text-primary-foreground border-primary shadow-sm shadow-primary/20"
                   : "bg-card/90 text-muted-foreground border-border hover:bg-white/5 hover:text-foreground"
               )}
             >
@@ -62,9 +65,9 @@ export default function CategoryChips({ selectedCategory, onSelectCategory }: Ca
           );
         })}
       </div>
-      
-      {/* Optional: Add scroll indicator if needed */}
-      <div className="absolute right-0 top-0 bottom-4 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
+
+      {/* Scroll fade indicator — mobile only */}
+      <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
     </div>
   );
 }

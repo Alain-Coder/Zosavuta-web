@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  allowedDevOrigins: ['779c-102-70-116-102.ngrok-free.app'],
 
   // NOTE: Re-enable type checking — ignoreBuildErrors was hiding potential safety issues.
   // typescript: { ignoreBuildErrors: true },

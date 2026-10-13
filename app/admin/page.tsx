@@ -90,7 +90,7 @@ interface Analytics {
   topEvents: { name: string; ticketsSold: number; revenue: number; organizerName?: string }[];
   organizers: { uid: string; name: string; email?: string; eventCount?: number }[];
   events?: {
-    id: number;
+    id: string;
     title: string;
     description?: string;
     category: string;
@@ -146,15 +146,29 @@ interface Payout {
   pendingBalance?: number;
   availableBalance?: number;
   paidOutBalance?: number;
+  feeAmount?: number;
+  netAmount?: number;
+  providerReference?: string;
+  createdAt?: string;
+  verificationStatus?: string;
   payoutDetails?: {
     method?: string;
+    // Bank transfer fields
     bankName?: string;
     accountNumber?: string;
     accountName?: string;
+    // Mobile money fields
+    operator?: string;
+    network?: string;
+    phoneNumber?: string;
+    payoutFeePercent?: number;
+    feePercent?: number;
+    feeAmount?: number;
+    netAmount?: number;
+    grossAmount?: number;
+    mobilePayoutFee?: number;
+    netTransferAmount?: number;
   } | null;
-  feeAmount?: number;
-  netAmount?: number;
-  verificationStatus?: string;
 }
 
 interface FinancialReport {
@@ -598,7 +612,7 @@ function AdminDashboardContent() {
       const [analyticsRes, submissionsRes, payoutsRes, reportRes, logsRes, newsletterRes, verifRes, featuredRes] = await Promise.all([
         fetch(analyticsUrl, { headers }),
         fetch(`/api/admin/ticket-approvals?adminId=${user.uid}`, { headers }),
-        fetch(`/api/admin/financial-verifications?adminId=${user.uid}`, { headers }),
+        fetch('/api/admin/payouts', { headers }),
         fetch(reportsUrl, { headers }),
         fetch(auditUrl, { headers }),
         fetch(`/api/newsletter?adminId=${user.uid}&status=all&limit=200`, { headers }),
@@ -613,7 +627,15 @@ function AdminDashboardContent() {
       }
       if (payoutsRes.ok) {
         const d = await payoutsRes.json();
-        setPayouts(d.payouts || []);
+        // /api/admin/payouts returns a flat array
+        const payoutsArr = Array.isArray(d) ? d : (d.payouts || []);
+        // Parse payoutDetails JSON string from DB if needed
+        setPayouts(payoutsArr.map((p: any) => ({
+          ...p,
+          payoutDetails: p.payoutDetails
+            ? (typeof p.payoutDetails === 'string' ? JSON.parse(p.payoutDetails) : p.payoutDetails)
+            : null,
+        })));
       }
       if (reportRes.ok) setFinancialReport(await reportRes.json());
       if (logsRes.ok) {
@@ -699,21 +721,22 @@ function AdminDashboardContent() {
   const handleApprovePayout = async (payoutId: string) => {
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch('/api/admin/financial-verifications', {
-        method: 'POST',
+      const res = await fetch('/api/admin/payouts', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ payoutId, action: 'approve', adminId: user!.uid }),
+        body: JSON.stringify({ id: payoutId, status: 'APPROVED' }),
       });
       const data = await res.json();
       if (!res.ok) {
         if (data.dualApprovalPending) {
-          toast.info(`Dual Approval Pending: ${data.reason}`);
+          toast.info(`Dual Approval Pending: ${data.error}`);
           await fetchData();
           return;
         }
-        throw new Error(data.error);
+        throw new Error(data.error || 'Payout dispatch failed');
       }
-      toast.success('Payout dispatched to payment provider');
+      const method = data.method === 'MOBILE_MONEY' ? `${data.operator || 'Mobile Money'} (${data.phoneNumber})` : 'Bank Transfer';
+      toast.success(`Payout dispatched via ${method}`);
       await fetchData();
     } catch (err: any) {
       toast.error(err?.message || 'Payout dispatch failed');
@@ -1646,7 +1669,11 @@ function AdminDashboardContent() {
               <div className="space-y-4">
                 {payouts.map((payout) => {
                   const numAmount = Number(payout.amount);
-                  const fee = Number(payout.feeAmount) > 0 ? Number(payout.feeAmount) : Math.round((numAmount * 0.017 + 700) * 100) / 100;
+                  const isMobile = payout.payoutDetails?.method === 'MOBILE_MONEY' || Boolean(payout.payoutDetails?.phoneNumber);
+                  const mobileOp = payout.payoutDetails?.operator || 'Mobile Money';
+                  const mobilePhone = payout.payoutDetails?.phoneNumber;
+                  const feePercent = payout.payoutDetails?.payoutFeePercent ?? (String(mobileOp).toUpperCase().includes('AIRTEL') ? 1.8 : 1.5);
+                  const fee = Number(payout.feeAmount) > 0 ? Number(payout.feeAmount) : (isMobile ? Math.round((numAmount * (feePercent / 100)) * 100) / 100 : Math.round((numAmount * 0.017 + 700) * 100) / 100);
                   const net = Number(payout.netAmount) > 0 ? Number(payout.netAmount) : Math.max(0, numAmount - fee);
                   const bank = payout.payoutDetails;
 
@@ -1656,15 +1683,25 @@ function AdminDashboardContent() {
                         <div className="flex items-center gap-2">
                           <p className="font-mono text-sm font-bold">{payout.id}</p>
                           <PayoutStatusBadge status={payout.status} />
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary border border-primary/20">
-                            Bank Transfer Only
-                          </span>
+                          {isMobile ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                              {mobileOp}
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary border border-primary/20">
+                              Bank Transfer Only
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-muted-foreground">
                           Seller: <span className="font-semibold text-foreground">{payout.sellerName || payout.sellerId}</span>
                           {payout.sellerEmail && ` · ${payout.sellerEmail}`}
                         </p>
-                        {bank?.bankName ? (
+                        {isMobile ? (
+                          <p className="text-xs text-foreground font-medium">
+                            Destination: <span className="font-bold">{mobileOp}</span> · Phone: <span className="font-mono font-bold text-primary">{mobilePhone}</span>
+                          </p>
+                        ) : bank?.bankName ? (
                           <p className="text-xs text-foreground font-medium">
                             Destination: <span className="font-bold">{bank.bankName}</span> · Acc: <span className="font-mono">{bank.accountNumber}</span> ({bank.accountName || payout.sellerName})
                           </p>
@@ -1678,7 +1715,7 @@ function AdminDashboardContent() {
                             Gross: MWK {numAmount.toLocaleString()}
                           </span>
                           <span className="text-amber-600 dark:text-amber-400">
-                            Bank Fee (1.7% + 700): -MWK {fee.toLocaleString()}
+                            {isMobile ? `Withdrawal Fee (${feePercent}%): -MWK ${fee.toLocaleString()}` : `Bank Fee (1.7% + 700): -MWK ${fee.toLocaleString()}`}
                           </span>
                           <span className="font-bold text-primary">
                             Net Transfer: MWK {net.toLocaleString()}
@@ -1690,10 +1727,10 @@ function AdminDashboardContent() {
                           size="sm"
                           onClick={() => void handleApprovePayout(payout.id)}
                           className="shrink-0"
-                          disabled={!bank?.bankName || !bank?.accountNumber}
+                          disabled={isMobile ? !mobilePhone : (!bank?.bankName || !bank?.accountNumber)}
                         >
                           <SendIcon className="w-3 h-3 mr-1.5" />
-                          Verify & Dispatch Bank Transfer
+                          {isMobile ? `Verify & Dispatch ${mobileOp}` : 'Verify & Dispatch Bank Transfer'}
                         </Button>
                       )}
                     </div>

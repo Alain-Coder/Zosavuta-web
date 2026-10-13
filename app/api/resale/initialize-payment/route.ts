@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     const listings = await query<any>(
       `SELECT r.id, r.orderId, r.eventId, r.sellerId, r.price, r.status, r.ticketId, e.title as eventTitle, e.date as eventDate, e.time as eventTime, e.location as eventLocation, e.venue as eventVenue
        FROM resale_listings r
-       JOIN events e ON r.eventId = e.id
+       JOIN events e ON r.eventId = e.legacyId
       WHERE r.id = ? AND (e.date >= CURDATE() OR e.date IS NULL) LIMIT 1`,
       [listingId]
     );

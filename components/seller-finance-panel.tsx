@@ -182,9 +182,6 @@ export default function SellerFinancePanel() {
           <div className="p-5 rounded-xl border bg-card space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold">Request Bank Withdrawal</h3>
-              <span className="text-xs text-muted-foreground">
-                Withdrawal Bank Payout Fee: 1.7% + MWK 700
-              </span>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
@@ -265,6 +262,8 @@ export default function SellerFinancePanel() {
               • Funds from concluded events automatically move to available balance the day after the event completes.
               <br />
               • Payouts are dispatched exclusively via Bank Transfer upon administrative verification.
+              <br />
+              • Withdrawal Bank Payout Fee: 1.7% + MWK 700
             </p>
           </div>
 
