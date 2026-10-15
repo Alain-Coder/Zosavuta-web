@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 import { getAuthUser, canOrganizeEvents } from '@/lib/auth-server';
+import { getKycUploadDirectory } from '@/lib/kyc-storage';
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_TYPES = new Set([
@@ -42,14 +43,14 @@ export async function POST(req: NextRequest) {
     else if (file.type === 'image/webp') ext = 'webp';
 
     const filename = `kyc-${user.uid}-${Date.now()}.${ext}`;
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'kyc');
+    const uploadDir = getKycUploadDirectory();
 
     await mkdir(uploadDir, { recursive: true });
     const buffer = Buffer.from(await file.arrayBuffer());
     await writeFile(path.join(uploadDir, filename), buffer);
 
     return NextResponse.json({
-      url: `/uploads/kyc/${filename}`,
+      url: `/api/uploads/kyc/${filename}`,
       filename: file.name,
       fileType: file.type,
       size: file.size,

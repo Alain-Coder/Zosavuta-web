@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/use-auth';
-import { getAuthHeaders, getAuthUploadHeaders } from '@/lib/auth-client';
+import { getAuthHeaders, getAuthUploadHeaders, openAuthenticatedDocument, reauthenticateWithPassword } from '@/lib/auth-client';
 import {
   REGISTRATION_TYPES,
   MALAWI_DISTRICTS,
@@ -46,6 +46,8 @@ export default function OrganizerVerificationPage() {
   const [submitting, setSubmitting] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [uploadingCert, setUploadingCert] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState<File | null>(null);
+  const [selectedCertificate, setSelectedCertificate] = useState<File | null>(null);
 
   // Status & History from backend
   const [status, setStatus] = useState<OrganizerVerificationStatus>('NOT_STARTED');
@@ -184,37 +186,11 @@ export default function OrganizerVerificationPage() {
     return (Number(applicantOwnership) || 0) + totalShareholdersOwnership;
   }, [applicantOwnership, totalShareholdersOwnership]);
 
-  // Document upload handler
-  const handleFileUpload = async (file: File, type: 'doc' | 'cert') => {
+  const handleFileSelection = (file: File, type: 'doc' | 'cert') => {
     const isDoc = type === 'doc';
-    if (isDoc) setUploadingDoc(true);
-    else setUploadingCert(true);
-
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const headers = await getAuthUploadHeaders();
-      const res = await fetch('/api/upload/kyc-document', {
-        method: 'POST',
-        headers,
-        body: fd,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
-
-      if (isDoc) {
-        setIdDocumentUrl(data.url);
-        toast.success('Identity document uploaded successfully');
-      } else {
-        setCertificateUrl(data.url);
-        toast.success('Registration certificate uploaded successfully');
-      }
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
-      if (isDoc) setUploadingDoc(false);
-      else setUploadingCert(false);
-    }
+    if (isDoc) setSelectedDocument(file);
+    else setSelectedCertificate(file);
+    toast.info(`${file.name} selected. It will upload after your verification data is saved.`);
   };
 
   // Shareholder helpers
@@ -262,7 +238,11 @@ export default function OrganizerVerificationPage() {
         accountName: bizAccountName,
       };
 
-      const payload = {
+      const payload: {
+        action: 'submit' | 'save_draft';
+        businessType: BusinessType;
+        [key: string]: unknown;
+      } = {
         action,
         businessType,
         ...(businessType === 'unregistered'
@@ -288,15 +268,73 @@ export default function OrganizerVerificationPage() {
           }),
       };
 
-      const headers = await getAuthHeaders();
-      const res = await fetch('/api/organizer/verification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify(payload),
-      });
+      const sendVerification = async (requestPayload: typeof payload) => {
+        const send = async () => fetch('/api/organizer/verification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
+          body: JSON.stringify(requestPayload),
+        });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Submission failed');
+        let response = await send();
+        let result = await response.json();
+        if (response.status === 403 && result.code === 'RECENT_AUTH_REQUIRED') {
+          await reauthenticateWithPassword();
+          response = await send();
+          result = await response.json();
+        }
+        if (!response.ok) throw new Error(result.error || 'Submission failed');
+        return result;
+      };
+
+      if (action === 'save_draft') {
+        const draft = await sendVerification(payload);
+        toast.success(draft.message || 'Verification draft saved.');
+        if (draft.verification) setStatus(draft.verification.status);
+        return;
+      }
+
+      let documentUrl = idDocumentUrl;
+      let businessCertificateUrl = certificateUrl;
+      const documentToUpload = businessType === 'unregistered' ? selectedDocument : null;
+      const certificateToUpload = businessType === 'registered' ? selectedCertificate : null;
+      if (documentToUpload || certificateToUpload) {
+        await sendVerification({ ...payload, action: 'save_draft' });
+
+        const uploadSelectedFile = async (file: File, type: 'doc' | 'cert') => {
+          const formData = new FormData();
+          formData.append('file', file);
+          const response = await fetch('/api/upload/kyc-document', {
+            method: 'POST',
+            headers: await getAuthUploadHeaders(),
+            body: formData,
+          });
+          const result = await response.json();
+          if (!response.ok || !result.url) throw new Error(result.error || 'Document upload failed');
+          if (type === 'doc') {
+            documentUrl = result.url;
+            setIdDocumentUrl(result.url);
+            setSelectedDocument(null);
+          } else {
+            businessCertificateUrl = result.url;
+            setCertificateUrl(result.url);
+            setSelectedCertificate(null);
+          }
+        };
+
+        if (documentToUpload) {
+          setUploadingDoc(true);
+          await uploadSelectedFile(documentToUpload, 'doc');
+        }
+        if (certificateToUpload) {
+          setUploadingCert(true);
+          await uploadSelectedFile(certificateToUpload, 'cert');
+        }
+      }
+
+      const finalPayload: typeof payload = businessType === 'unregistered'
+        ? { ...payload, action: 'submit', idDocumentUrl: documentUrl }
+        : { ...payload, action: 'submit', certificateUrl: businessCertificateUrl };
+      const data = await sendVerification(finalPayload);
 
       toast.success(data.message || 'Verification submitted!');
       if (data.verification) {
@@ -305,6 +343,8 @@ export default function OrganizerVerificationPage() {
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Submission failed');
     } finally {
+      setUploadingDoc(false);
+      setUploadingCert(false);
       setSubmitting(false);
     }
   };
@@ -547,7 +587,8 @@ export default function OrganizerVerificationPage() {
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (file) void handleFileUpload(file, 'doc');
+                  if (file) handleFileSelection(file, 'doc');
+                  e.currentTarget.value = '';
                 }}
               />
 
@@ -557,14 +598,14 @@ export default function OrganizerVerificationPage() {
                     <FileTextIcon className="w-5 h-5 text-primary" />
                     <div>
                       <p className="text-xs font-bold text-foreground">Document Uploaded</p>
-                      <a
-                        href={idDocumentUrl}
-                        target="_blank"
-                        rel="noreferrer"
+                      {selectedDocument && <p className="text-xs text-muted-foreground">Replacement selected: {selectedDocument.name}</p>}
+                      <button
+                        type="button"
+                        onClick={() => void openAuthenticatedDocument(idDocumentUrl).catch((error) => toast.error(error instanceof Error ? error.message : 'Unable to open document'))}
                         className="text-xs text-primary underline flex items-center gap-1 mt-0.5"
                       >
                         <EyeIcon className="w-3 h-3" /> View / Download uploaded document
-                      </a>
+                      </button>
                     </div>
                   </div>
                   {!isApproved && (
@@ -589,7 +630,7 @@ export default function OrganizerVerificationPage() {
                   ) : (
                     <>
                       <UploadIcon className="w-6 h-6 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-sm font-semibold">Click to upload National ID or Passport</p>
+                      <p className="text-sm font-semibold">{selectedDocument ? selectedDocument.name : 'Select National ID or Passport'}</p>
                       <p className="text-xs text-muted-foreground mt-1">JPG, PNG or PDF (max 10 MB)</p>
                     </>
                   )}
@@ -759,7 +800,8 @@ export default function OrganizerVerificationPage() {
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (file) void handleFileUpload(file, 'cert');
+                  if (file) handleFileSelection(file, 'cert');
+                  e.currentTarget.value = '';
                 }}
               />
 
@@ -769,14 +811,14 @@ export default function OrganizerVerificationPage() {
                     <FileTextIcon className="w-5 h-5 text-primary" />
                     <div>
                       <p className="text-xs font-bold text-foreground">Certificate Uploaded</p>
-                      <a
-                        href={certificateUrl}
-                        target="_blank"
-                        rel="noreferrer"
+                      {selectedCertificate && <p className="text-xs text-muted-foreground">Replacement selected: {selectedCertificate.name}</p>}
+                      <button
+                        type="button"
+                        onClick={() => void openAuthenticatedDocument(certificateUrl).catch((error) => toast.error(error instanceof Error ? error.message : 'Unable to open certificate'))}
                         className="text-xs text-primary underline flex items-center gap-1 mt-0.5"
                       >
                         <EyeIcon className="w-3 h-3" /> View / Download registration certificate
-                      </a>
+                      </button>
                     </div>
                   </div>
                   {!isApproved && (
@@ -801,7 +843,7 @@ export default function OrganizerVerificationPage() {
                   ) : (
                     <>
                       <UploadIcon className="w-6 h-6 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-sm font-semibold">Click to upload Business Registration Certificate</p>
+                      <p className="text-sm font-semibold">{selectedCertificate ? selectedCertificate.name : 'Select Business Registration Certificate'}</p>
                       <p className="text-xs text-muted-foreground mt-1">Official certificate (JPG, PNG or PDF up to 10 MB)</p>
                     </>
                   )}

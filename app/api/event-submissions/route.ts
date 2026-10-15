@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, execute } from '@/lib/db';
 import { getAuthUser, hasAdminRole, ensureUserRecord, canOrganizeEvents } from '@/lib/auth-server';
 import { checkOrganizerIsApproved } from '@/lib/organizer-verification';
+import { notifyAdminOfPendingReview } from '@/lib/admin-notifications';
 
 export async function GET(req: NextRequest) {
   try {
@@ -162,6 +163,14 @@ export async function POST(req: NextRequest) {
         JSON.stringify(formattedTicketTypes),
       ]
     );
+
+    if (ticketDetailsSubmitted) {
+      await notifyAdminOfPendingReview({
+        reviewType: 'event submission',
+        title,
+        submittedBy: user.fullName || user.email || user.uid,
+      });
+    }
 
     return NextResponse.json(
       {

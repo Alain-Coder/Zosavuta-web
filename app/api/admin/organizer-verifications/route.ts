@@ -8,6 +8,7 @@ import {
   OrganizerVerificationStatus,
 } from '@/lib/organizer-verification';
 import { logFinancialAudit } from '@/lib/audit';
+import { getKycDocumentUrl } from '@/lib/kyc-storage';
 
 export async function GET(req: NextRequest) {
   try {
@@ -41,7 +42,14 @@ export async function GET(req: NextRequest) {
     sql += ' ORDER BY v.updatedAt DESC';
 
     const rows = await query<any>(sql, params);
-    const verifications = rows.map(parseVerificationRow);
+    const verifications = rows.map((row) => {
+      const verification = parseVerificationRow(row);
+      return {
+        ...verification,
+        idDocumentUrl: getKycDocumentUrl(verification.idDocumentUrl),
+        certificateUrl: getKycDocumentUrl(verification.certificateUrl),
+      };
+    });
 
     const counts = {
       total: verifications.length,

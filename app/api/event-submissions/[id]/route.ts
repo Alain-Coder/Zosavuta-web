@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, execute } from '@/lib/db';
 import { getAuthUser, canOrganizeEvents } from '@/lib/auth-server';
+import { notifyAdminOfPendingReview } from '@/lib/admin-notifications';
 
 /** Step 2: Organizer adds ticket details to a pending submission */
 export async function GET(
@@ -72,8 +73,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid submission ID' }, { status: 400 });
     }
 
-    const rows = await query<{ organizerId: string; status: string }>(
-      'SELECT organizerId, status FROM event_submissions WHERE id = ?',
+    const rows = await query<{ organizerId: string; status: string; ticketDetailsSubmitted: number; title: string }>(
+      'SELECT organizerId, status, ticketDetailsSubmitted, title FROM event_submissions WHERE id = ?',
       [submissionId]
     );
 
@@ -133,6 +134,14 @@ export async function PATCH(
        WHERE id = ? AND status = 'pending'`,
       [finalStandardPrice, parsedTickets, category || null, time || null, JSON.stringify(formattedTicketTypes), submissionId]
     );
+
+    if (!Number(submission.ticketDetailsSubmitted)) {
+      await notifyAdminOfPendingReview({
+        reviewType: 'event submission',
+        title: submission.title,
+        submittedBy: user.fullName || user.email || user.uid,
+      });
+    }
 
     return NextResponse.json({
       id: submissionId,

@@ -70,7 +70,7 @@ import {
   StarIcon,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
-import { getAuthHeaders } from '@/lib/auth-client';
+import { getAuthHeaders, openAuthenticatedDocument } from '@/lib/auth-client';
 import { toast } from 'sonner';
 
 /* ─────────────────────────────────────────── Types ── */
@@ -2328,10 +2328,8 @@ function AdminDashboardContent() {
                               <FileTextIcon className="w-4 h-4 text-primary" />
                               <span className="text-xs font-semibold">National ID / Passport File</span>
                             </div>
-                            <Button asChild size="sm" variant="outline" className="h-8 gap-1.5 text-xs">
-                              <a href={selectedVerification.idDocumentUrl} target="_blank" rel="noreferrer">
-                                <EyeIcon className="w-3.5 h-3.5" /> View / Download Document
-                              </a>
+                            <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => void openAuthenticatedDocument(selectedVerification.idDocumentUrl!).catch((error) => toast.error(error instanceof Error ? error.message : 'Unable to open document'))}>
+                              <EyeIcon className="w-3.5 h-3.5" /> View / Download Document
                             </Button>
                           </div>
                         ) : (
@@ -2370,10 +2368,8 @@ function AdminDashboardContent() {
                               <FileTextIcon className="w-4 h-4 text-primary" />
                               <span className="text-xs font-semibold">Registration Certificate File</span>
                             </div>
-                            <Button asChild size="sm" variant="outline" className="h-8 gap-1.5 text-xs">
-                              <a href={selectedVerification.certificateUrl} target="_blank" rel="noreferrer">
-                                <EyeIcon className="w-3.5 h-3.5" /> View / Download Certificate
-                              </a>
+                            <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => void openAuthenticatedDocument(selectedVerification.certificateUrl!).catch((error) => toast.error(error instanceof Error ? error.message : 'Unable to open certificate'))}>
+                              <EyeIcon className="w-3.5 h-3.5" /> View / Download Certificate
                             </Button>
                           </div>
                         ) : (

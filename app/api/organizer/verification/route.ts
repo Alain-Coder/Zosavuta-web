@@ -10,6 +10,8 @@ import {
   BusinessType,
 } from '@/lib/organizer-verification';
 import { logFinancialAudit } from '@/lib/audit';
+import { getKycDocumentUrl } from '@/lib/kyc-storage';
+import { notifyAdminOfPendingReview } from '@/lib/admin-notifications';
 
 export async function GET(req: NextRequest) {
   try {
@@ -20,9 +22,14 @@ export async function GET(req: NextRequest) {
 
     const verification = await getVerificationByUserId(user.uid);
     const history = verification ? await getVerificationHistory(verification.id) : [];
+    const responseVerification = verification ? {
+      ...verification,
+      idDocumentUrl: getKycDocumentUrl(verification.idDocumentUrl),
+      certificateUrl: getKycDocumentUrl(verification.certificateUrl),
+    } : null;
 
     return NextResponse.json({
-      verification: verification || {
+      verification: responseVerification || {
         userId: user.uid,
         businessType: 'unregistered',
         status: 'NOT_STARTED',
@@ -230,6 +237,12 @@ export async function POST(req: NextRequest) {
         entityId: String(updated.id),
         oldValues: existing ? { status: existing.status } : null,
         newValues: { status: 'SUBMITTED', businessType },
+      });
+
+      await notifyAdminOfPendingReview({
+        reviewType: 'organizer verification',
+        title: businessType === 'registered' ? (updated.businessName || 'Registered business') : (updated.legalName || 'Individual organizer'),
+        submittedBy: user.email || user.uid,
       });
     }
 

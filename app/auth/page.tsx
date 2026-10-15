@@ -63,6 +63,12 @@ function AuthContent() {
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
+      if (res.status === 401 && data.code === 'USER_ID_MISMATCH') {
+        throw new Error('The signed-in account did not match the requested profile. Sign out and sign in again.');
+      }
+      if (res.status === 401) {
+        throw new Error('Your sign-in session could not be verified. Sign in again and retry.');
+      }
       if (res.status === 403 && data.code === 'EMAIL_NOT_VERIFIED') {
         throw new Error('EMAIL_NOT_VERIFIED');
       }

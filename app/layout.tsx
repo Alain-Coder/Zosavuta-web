@@ -8,18 +8,12 @@ import './globals.css'
 const _geist = Geist({ subsets: ['latin'] })
 const _geistMono = Geist_Mono({ subsets: ['latin'] })
 
-const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://zosavuta.com'
+const siteUrl = 'https://zosavuta.com'
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
-
-  title: {
-    default: "Zosavuta | Ticket Yako, M'manja Mwako",
-    template: '%s | Zosavuta',
-  },
-
-  description:
-    "Discover events, buy secure tickets, and experience events with less stress. Zosavuta connects Malawians with concerts, festivals, sports, conferences, and more, while giving organizers the tools to sell, manage, and grow their events.",
+  metadataBase: new URL('https://zosavuta.com'),
+  title: "Zosavuta | Malawi's Premier E-Ticketing Platform",
+  description: 'Discover events and buy tickets online with Zosavuta.',
 
   applicationName: 'Zosavuta',
   generator: 'Zosavuta',
@@ -53,7 +47,7 @@ export const metadata: Metadata = {
   category: 'Events & Ticketing',
 
   alternates: {
-    canonical: '/',
+    canonical: 'https://zosavuta.com',
   },
 
   openGraph: {
@@ -189,4 +183,3 @@ export default function RootLayout({
     </html>
   )
 }
-
