@@ -15,7 +15,7 @@ export interface Event {
   ticketTypes?: Array<{ name: string; price: number }>;
   organizerId: string;
   organizer?: string;
-  status: 'active' | 'draft' | 'sold_out' | 'cancelled' | 'completed';
+  status: 'active' | 'draft' | 'sold_out' | 'cancelled' | 'completed' | 'suspended';
   busTransport: boolean;
   seatingChart: boolean;
   isFeatured: boolean;

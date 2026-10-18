@@ -475,7 +475,7 @@ function AdminDashboardContent() {
 
   // ── Overview Events Table Filter & Pagination ──
   const [overviewEventsSearch, setOverviewEventsSearch] = useState('');
-  const [overviewEventsStatusFilter, setOverviewEventsStatusFilter] = useState<'all' | 'active' | 'sold_out' | 'draft' | 'cancelled' | 'expired'>('all');
+  const [overviewEventsStatusFilter, setOverviewEventsStatusFilter] = useState<'all' | 'active' | 'suspended' | 'sold_out' | 'draft' | 'cancelled' | 'expired'>('all');
   const [overviewEventsPage, setOverviewEventsPage] = useState(1);
   const OVERVIEW_EVENTS_PER_PAGE = 8;
 
@@ -483,6 +483,7 @@ function AdminDashboardContent() {
   const [featuredEvents, setFeaturedEvents] = useState<any[]>([]);
   const [featuredLoading, setFeaturedLoading] = useState<string | null>(null);
   const [featuredSearch, setFeaturedSearch] = useState('');
+  const [eventStatusLoading, setEventStatusLoading] = useState<string | null>(null);
 
   // ── Organizer KYC Verification State ──
   const [verifications, setVerifications] = useState<AdminVerification[]>([]);
@@ -865,6 +866,35 @@ function AdminDashboardContent() {
     }
   };
 
+  const handleToggleEventSuspension = async (eventId: string, suspended: boolean) => {
+    setEventStatusLoading(eventId);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/admin/event-status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ eventId, action: suspended ? 'unsuspend' : 'suspend' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update event status');
+
+      setAnalytics((current) => current
+        ? {
+            ...current,
+            events: current.events?.map((event) =>
+              event.id === eventId ? { ...event, status: data.status } : event
+            ),
+          }
+        : current
+      );
+      toast.success(suspended ? 'Event unsuspended' : 'Event suspended');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update event status');
+    } finally {
+      setEventStatusLoading(null);
+    }
+  };
+
   // ── Filtered approvals (Hooks must be called BEFORE any early returns) ──
   const filteredApprovals = useMemo(() => {
     return submissions
@@ -1196,6 +1226,7 @@ function AdminDashboardContent() {
                   >
                     <option value="all">All statuses</option>
                     <option value="active">Active</option>
+                    <option value="suspended">Suspended</option>
                     <option value="sold_out">Sold Out</option>
                     <option value="draft">Draft</option>
                     <option value="cancelled">Cancelled</option>
@@ -1226,6 +1257,7 @@ function AdminDashboardContent() {
                         <th className="py-2.5 px-3 font-semibold">Status</th>
                         <th className="py-2.5 px-3 font-semibold">Tickets (Sold / Total)</th>
                         <th className="py-2.5 px-3 font-semibold text-right">Revenue</th>
+                        <th className="py-2.5 px-3 font-semibold text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50">
@@ -1261,12 +1293,12 @@ function AdminDashboardContent() {
                                   ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
                                   : evt.status === 'sold_out'
                                     ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                                    : evt.status === 'cancelled'
+                                    : evt.status === 'suspended' || evt.status === 'cancelled'
                                       ? 'bg-red-500/15 text-red-600 dark:text-red-400'
                                       : 'bg-muted text-muted-foreground'
                                   }`}
                               >
-                                {evt.status}
+                                {evt.status.replace('_', ' ')}
                               </span>
                             </td>
                             <td className="py-3 px-3">
@@ -1285,6 +1317,21 @@ function AdminDashboardContent() {
                             </td>
                             <td className="py-3 px-3 text-right font-bold text-foreground">
                               MWK {(evt.revenue || 0).toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              {(evt.status === 'active' || evt.status === 'suspended') && (
+                                <Button
+                                  size="sm"
+                                  variant={evt.status === 'suspended' ? 'outline' : 'destructive'}
+                                  className="h-7 text-[11px]"
+                                  disabled={eventStatusLoading === evt.id}
+                                  onClick={() => void handleToggleEventSuspension(evt.id, evt.status === 'suspended')}
+                                >
+                                  {eventStatusLoading === evt.id
+                                    ? <Loader2Icon className="w-3 h-3 animate-spin" />
+                                    : evt.status === 'suspended' ? 'Unsuspend' : 'Suspend'}
+                                </Button>
+                              )}
                             </td>
                           </tr>
                         );

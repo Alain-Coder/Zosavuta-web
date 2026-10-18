@@ -27,6 +27,7 @@ import { auth } from '@/lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { clearSessionExpiry } from '@/lib/auth-session';
 import { canOrganize, isAdmin, canAttend, UserRole } from '@/lib/roles';
+import { getAuthHeaders } from '@/lib/auth-client';
 
 const NAV_LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -60,7 +61,7 @@ export default function Navigation() {
         return;
       }
       try {
-        const res = await fetch(`/api/users/${u.uid}`);
+        const res = await fetch(`/api/users/${u.uid}`, { headers: await getAuthHeaders() });
         if (res.ok) {
           const data = await res.json();
           setUserRole(data.role ?? null);

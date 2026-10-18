@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, execute } from '@/lib/db';
 import { getAuthUser, canOrganizeEvents } from '@/lib/auth-server';
+import { getEventCoverUrl } from '@/lib/event-storage';
 
 export async function GET(req: NextRequest) {
   const user = await getAuthUser(req);
@@ -72,6 +73,7 @@ export async function GET(req: NextRequest) {
 
     return {
       ...event,
+      image: getEventCoverUrl(event.image),
       physicalAllocated,
       physicalSold,
       physicalUsed: Number(event.physicalUsed || 0),

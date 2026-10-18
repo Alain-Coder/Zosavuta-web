@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS events (
   ticketsAvailable INT           NOT NULL DEFAULT 0,
   ticketTypes      JSON,
   organizerId      VARCHAR(128)  NOT NULL,
-  status           ENUM('active','draft','sold_out','cancelled','expired') NOT NULL DEFAULT 'active',
+  status           ENUM('active','suspended','draft','sold_out','cancelled','expired','completed') NOT NULL DEFAULT 'active',
   busTransport     TINYINT(1)   NOT NULL DEFAULT 0,
   seatingChart     TINYINT(1)   NOT NULL DEFAULT 0,
   createdAt        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,

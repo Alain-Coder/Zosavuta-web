@@ -1,5 +1,7 @@
 import QRCode from 'qrcode';
 import path from 'path';
+import { readFile } from 'fs/promises';
+import { jsPDF } from 'jspdf';
 import pool, { query } from '@/lib/db';
 import { sendEmail } from '@/lib/email';
 
@@ -12,6 +14,12 @@ type TicketEmailRow = {
   eventVenue: string;
   tier: string;
   email: string;
+  price: number;
+  quantity: number;
+  totalAmount: number;
+  paymentMethod: string | null;
+  providerReference: string | null;
+  createdAt: Date | string;
   ticketNumber: string;
   verificationToken: string;
 };
@@ -26,10 +34,152 @@ function escapeHtml(value: string): string {
   })[character] as string);
 }
 
+function formatMoney(amount: number): string {
+  return `MWK ${Number(amount || 0).toLocaleString('en-MW', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+async function createReceiptPdf(order: TicketEmailRow, ticketNumbers: string[]): Promise<Buffer> {
+  const document = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const pageWidth = document.internal.pageSize.getWidth();
+  const logo = await readFile(path.join(process.cwd(), 'public', 'zosavuta.png'));
+  const logoDataUrl = `data:image/png;base64,${logo.toString('base64')}`;
+  const issuedAt = new Date(order.createdAt);
+  const issuedDate = Number.isNaN(issuedAt.getTime())
+    ? new Date().toLocaleDateString('en-MW')
+    : issuedAt.toLocaleDateString('en-MW', { year: 'numeric', month: 'long', day: 'numeric' });
+  const eventDate = new Date(order.eventDate).toLocaleDateString('en-MW', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+  const left = 18;
+  const right = pageWidth - 18;
+  const contentWidth = right - left;
+  const green = [24, 121, 78] as const;
+  const dark = [32, 41, 54] as const;
+  const muted = [92, 103, 115] as const;
+  const light = [244, 248, 246] as const;
+
+  document.setFillColor(...green);
+  document.rect(0, 0, pageWidth, 5, 'F');
+  document.addImage(logoDataUrl, 'PNG', left, 15, 25, 25);
+  document.setTextColor(...dark);
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(23);
+  document.text('PAYMENT RECEIPT', right, 22, { align: 'right' });
+  document.setFont('helvetica', 'normal');
+  document.setFontSize(10);
+  document.setTextColor(...muted);
+  document.text('Zosavuta · Malawi', right, 29, { align: 'right' });
+  document.text(`Receipt date: ${issuedDate}`, right, 35, { align: 'right' });
+  document.setDrawColor(221, 228, 224);
+  document.line(left, 48, right, 48);
+
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(10);
+  document.setTextColor(...muted);
+  document.text('RECEIPT NUMBER', left, 59);
+  document.text('PAYMENT STATUS', right, 59, { align: 'right' });
+  document.setFont('helvetica', 'normal');
+  document.setFontSize(12);
+  document.setTextColor(...dark);
+  document.text(order.orderId, left, 66);
+  document.setTextColor(...green);
+  document.setFont('helvetica', 'bold');
+  document.text('PAID', right, 66, { align: 'right' });
+
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(10);
+  document.setTextColor(...muted);
+  document.text('BILLED TO', left, 82);
+  document.setFont('helvetica', 'normal');
+  document.setFontSize(11);
+  document.setTextColor(...dark);
+  document.text(`${order.firstName || 'Customer'} · ${order.email}`, left, 89);
+  if (order.paymentMethod || order.providerReference) {
+    document.setFontSize(9);
+    document.setTextColor(...muted);
+    const paymentDetails = [
+      order.paymentMethod ? `Method: ${order.paymentMethod}` : '',
+      order.providerReference ? `Payment reference: ${order.providerReference}` : '',
+    ].filter(Boolean).join('   ·   ');
+    document.text(paymentDetails, left, 96, { maxWidth: contentWidth });
+  }
+
+  document.setFillColor(...light);
+  document.roundedRect(left, 105, contentWidth, 27, 2, 2, 'F');
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(12);
+  document.setTextColor(...dark);
+  document.text(order.eventTitle, left + 5, 114, { maxWidth: contentWidth - 10 });
+  document.setFont('helvetica', 'normal');
+  document.setFontSize(9);
+  document.setTextColor(...muted);
+  document.text(`${eventDate} · ${order.eventTime} · ${order.eventVenue}`, left + 5, 123, { maxWidth: contentWidth - 10 });
+
+  const tableTop = 145;
+  const columns = [left, left + 77, left + 110, left + 137, right];
+  document.setFillColor(...green);
+  document.rect(left, tableTop, contentWidth, 11, 'F');
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(9);
+  document.setTextColor(255, 255, 255);
+  document.text('DESCRIPTION', columns[0] + 4, tableTop + 7);
+  document.text('QTY', columns[2] - 4, tableTop + 7, { align: 'right' });
+  document.text('UNIT PRICE', columns[3] - 4, tableTop + 7, { align: 'right' });
+  document.text('AMOUNT', columns[4] - 4, tableTop + 7, { align: 'right' });
+
+  const rowTop = tableTop + 11;
+  document.setDrawColor(221, 228, 224);
+  document.setFillColor(255, 255, 255);
+  document.rect(left, rowTop, contentWidth, 17, 'FD');
+  document.setFont('helvetica', 'normal');
+  document.setFontSize(10);
+  document.setTextColor(...dark);
+  document.text(`${order.eventTitle} - ${order.tier || 'Standard'}`, columns[0] + 4, rowTop + 10, { maxWidth: 70 });
+  document.text(String(order.quantity), columns[2] - 4, rowTop + 10, { align: 'right' });
+  document.text(formatMoney(Number(order.price)), columns[3] - 4, rowTop + 10, { align: 'right' });
+  document.setFont('helvetica', 'bold');
+  document.text(formatMoney(Number(order.totalAmount)), columns[4] - 4, rowTop + 10, { align: 'right' });
+
+  const totalTop = rowTop + 27;
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(11);
+  document.setTextColor(...dark);
+  document.text('TOTAL PAID', columns[3] - 4, totalTop, { align: 'right' });
+  document.setFontSize(15);
+  document.setTextColor(...green);
+  document.text(formatMoney(Number(order.totalAmount)), columns[4] - 4, totalTop, { align: 'right' });
+
+  const ticketsTop = totalTop + 24;
+  document.setDrawColor(221, 228, 224);
+  document.line(left, ticketsTop - 7, right, ticketsTop - 7);
+  document.setFont('helvetica', 'bold');
+  document.setFontSize(9);
+  document.setTextColor(...muted);
+  document.text('TICKET NUMBER(S)', left, ticketsTop);
+  document.setFont('helvetica', 'normal');
+  document.setFontSize(10);
+  document.setTextColor(...dark);
+  document.text(document.splitTextToSize(ticketNumbers.join(', '), contentWidth), left, ticketsTop + 7);
+
+  document.setFontSize(9);
+  document.setTextColor(...muted);
+  document.text('Thank you for your purchase. Keep this receipt for your records.', left, 270);
+  document.setDrawColor(221, 228, 224);
+  document.line(left, 276, right, 276);
+  document.setFontSize(8);
+  document.text('This receipt confirms successful payment for the order shown above.', pageWidth / 2, 283, { align: 'center' });
+
+  return Buffer.from(document.output('arraybuffer'));
+}
+
 export async function sendOrderTicketsEmail(orderId: string): Promise<void> {
   const rows = await query<TicketEmailRow>(
     `SELECT o.id AS orderId, o.firstName, o.eventTitle, o.eventDate, o.eventTime,
-       o.eventVenue, o.tier, u.email, t.ticketNumber, t.verificationToken
+       o.eventVenue, o.tier, u.email, o.price, o.quantity, o.totalAmount,
+       o.paymentMethod, o.providerReference, o.createdAt, t.ticketNumber, t.verificationToken
      FROM orders o
      JOIN users u ON u.uid = o.userId
      JOIN order_tickets t ON t.orderId = o.id
@@ -106,6 +256,12 @@ export async function sendOrderTicketsEmail(orderId: string): Promise<void> {
       month: 'long',
       day: 'numeric',
       timeZone: 'UTC',
+    });
+    const receiptPdf = await createReceiptPdf(first, rows.map((ticket) => ticket.ticketNumber));
+    attachments.push({
+      filename: `Zosavuta-receipt-${first.orderId}.pdf`,
+      content: receiptPdf,
+      contentType: 'application/pdf',
     });
 
     await sendEmail({

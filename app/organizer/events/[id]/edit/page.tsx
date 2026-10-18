@@ -243,7 +243,7 @@ export default function EditEventPage() {
       if (
         newlyUploadedUrl &&
         initialImageUrl &&
-        initialImageUrl.startsWith('/uploads/') &&
+        (initialImageUrl.startsWith('/uploads/') || initialImageUrl.startsWith('/api/uploads/events/')) &&
         initialImageUrl !== newlyUploadedUrl
       ) {
         fetch('/api/upload/event-cover', {

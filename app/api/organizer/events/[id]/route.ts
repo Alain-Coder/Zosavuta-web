@@ -3,6 +3,7 @@ import { query, execute } from '@/lib/db';
 import { getAuthUser, canOrganizeEvents } from '@/lib/auth-server';
 import { logFinancialAudit } from '@/lib/audit';
 import { checkOrganizerIsApproved } from '@/lib/organizer-verification';
+import { getEventCoverUrl } from '@/lib/event-storage';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getAuthUser(req);
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const eventId = (await params).id;
   const events = await query<any>('SELECT * FROM events WHERE id = ? AND organizerId = ?', [eventId, user.uid]);
   if (!events.length) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
-  return NextResponse.json(events[0]);
+  return NextResponse.json({ ...events[0], image: getEventCoverUrl(events[0].image) });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -23,7 +24,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json();
   const allowedStatuses = ['active', 'draft', 'sold_out', 'cancelled', 'completed'];
   const status = body.status === undefined ? current[0].status : String(body.status);
-  if (!allowedStatuses.includes(status)) return NextResponse.json({ error: 'Invalid event status' }, { status: 400 });
+  if (
+    (current[0].status === 'suspended' && status !== 'suspended') ||
+    (current[0].status !== 'suspended' && status === 'suspended')
+  ) {
+    return NextResponse.json({ error: 'Only administrators can suspend or unsuspend events' }, { status: 403 });
+  }
+  const keepsAdminSuspension = body.status === undefined && current[0].status === 'suspended';
+  if (!allowedStatuses.includes(status) && !keepsAdminSuspension) {
+    return NextResponse.json({ error: 'Invalid event status' }, { status: 400 });
+  }
 
   if (status === 'active') {
     const isApproved = await checkOrganizerIsApproved(user.uid);
@@ -57,7 +67,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     [fields.title, fields.description, fields.fullDescription, fields.category, fields.date, fields.time, fields.location, fields.venue, fields.image, fields.status, fields.ticketTypes, fields.price, eventId, user.uid]
   );
   await logFinancialAudit({ actorId: user.uid, actorRole: user.role, action: status === 'cancelled' ? 'EVENT_CANCELLED' : 'EVENT_UPDATED', entityType: 'EVENT', entityId: String(eventId), oldValues: current[0], newValues: fields });
-  return NextResponse.json({ success: true, event: { ...current[0], ...fields } });
+  return NextResponse.json({
+    success: true,
+    event: { ...current[0], ...fields, image: getEventCoverUrl(fields.image) },
+  });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

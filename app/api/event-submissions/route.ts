@@ -3,6 +3,7 @@ import { query, execute } from '@/lib/db';
 import { getAuthUser, hasAdminRole, ensureUserRecord, canOrganizeEvents } from '@/lib/auth-server';
 import { checkOrganizerIsApproved } from '@/lib/organizer-verification';
 import { notifyAdminOfPendingReview } from '@/lib/admin-notifications';
+import { getEventCoverUrl } from '@/lib/event-storage';
 
 export async function GET(req: NextRequest) {
   try {
@@ -54,6 +55,7 @@ export async function GET(req: NextRequest) {
     const rows = await query(sql, params);
     const parsedRows = (rows as any[]).map((row) => ({
       ...row,
+      image: getEventCoverUrl(row.image),
       ticketTypes:
         typeof row.ticketTypes === 'string'
           ? (() => {

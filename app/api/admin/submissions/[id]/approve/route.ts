@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { query, execute } from '@/lib/db';
 import { getAuthUser, hasAdminRole } from '@/lib/auth-server';
+import { notifyOrganizerOfDecision } from '@/lib/organizer-notifications';
 
 export async function POST(
   req: NextRequest,
@@ -23,8 +24,10 @@ export async function POST(
     }
 
     const submissions = await query(
-      `SELECT * FROM event_submissions
-       WHERE id = ? AND status = 'pending' AND ticketDetailsSubmitted = 1`,
+      `SELECT s.*, u.email AS organizerEmail, u.fullName AS organizerName
+       FROM event_submissions s
+       LEFT JOIN users u ON u.uid = s.organizerId
+       WHERE s.id = ? AND s.status = 'pending' AND s.ticketDetailsSubmitted = 1`,
       [submissionId]
     );
 
@@ -87,6 +90,15 @@ export async function POST(
       VALUES (?, ?, 'APPROVED_EVENT', 'EVENT_SUBMISSION', ?, 'pending', 'approved', NULL)`,
           [user.uid, user.adminRole || 'SYSTEM_ADMINISTRATOR', String(submissionId)]
     );
+
+    await notifyOrganizerOfDecision({
+      to: String(s.organizerEmail || ''),
+      recipientName: String(s.organizerName || ''),
+      approvedItem: 'event submission',
+      decision: 'approved',
+      title: String(s.title || 'Your event'),
+      eventUrl: String(eventId),
+    });
 
     return NextResponse.json({ eventId, status: 'approved' });
   } catch (err: unknown) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, execute } from '@/lib/db';
 import { getAuthUser, hasAdminRole } from '@/lib/auth-server';
+import { notifyOrganizerOfDecision } from '@/lib/organizer-notifications';
 
 export async function POST(
   req: NextRequest,
@@ -24,7 +25,10 @@ export async function POST(
   const rejectionReason = body.rejectionReason || 'No reason provided';
 
   const submissions = await query(
-    'SELECT id FROM event_submissions WHERE id = ? AND status = ?',
+    `SELECT s.id, s.title, s.organizerId, u.email AS organizerEmail, u.fullName AS organizerName
+     FROM event_submissions s
+     LEFT JOIN users u ON u.uid = s.organizerId
+     WHERE s.id = ? AND s.status = ?`,
     [submissionId, 'pending']
   );
 
@@ -45,6 +49,20 @@ export async function POST(
     VALUES (?, ?, 'REJECTED_EVENT', 'EVENT_SUBMISSION', ?, ?, 'pending', 'rejected')`,
       [user.uid, user.adminRole || 'SYSTEM_ADMINISTRATOR', String(submissionId), rejectionReason]
   );
+
+    const submission = submissions[0] as {
+      title: string;
+      organizerEmail: string | null;
+      organizerName: string | null;
+    };
+    await notifyOrganizerOfDecision({
+      to: submission.organizerEmail || '',
+      recipientName: submission.organizerName,
+      approvedItem: 'event submission',
+      decision: 'rejected',
+      title: submission.title || 'Your event',
+      reason: rejectionReason,
+    });
 
   return NextResponse.json({ status: 'rejected' });
 }

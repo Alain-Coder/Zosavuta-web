@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, execute } from '@/lib/db';
 import { getAuthUser, canOrganizeEvents } from '@/lib/auth-server';
 import { notifyAdminOfPendingReview } from '@/lib/admin-notifications';
+import { getEventCoverUrl } from '@/lib/event-storage';
 
 /** Step 2: Organizer adds ticket details to a pending submission */
 export async function GET(
@@ -49,6 +50,7 @@ export async function GET(
 
     return NextResponse.json({
       ...submission,
+      image: getEventCoverUrl(submission.image),
       ticketTypes: parsedTicketTypes,
     });
   } catch (err: unknown) {

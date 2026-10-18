@@ -23,14 +23,12 @@ export async function getAuthUploadHeaders(): Promise<HeadersInit> {
   return { Authorization: `Bearer ${token}` };
 }
 
-export async function reauthenticateWithPassword(): Promise<void> {
+export async function reauthenticateWithPassword(password: string): Promise<void> {
   const user = auth.currentUser;
   if (!user?.email || !user.providerData.some((provider) => provider.providerId === 'password')) {
     throw new Error('Your session expired. Sign in again with your account password to continue.');
   }
 
-  const password = window.prompt(`For your security, enter the password for ${user.email}.`);
-  if (password === null) throw new Error('Reauthentication cancelled.');
   if (!password) throw new Error('Enter your password to continue.');
 
   try {

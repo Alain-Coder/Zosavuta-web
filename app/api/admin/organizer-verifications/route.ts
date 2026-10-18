@@ -9,6 +9,7 @@ import {
 } from '@/lib/organizer-verification';
 import { logFinancialAudit } from '@/lib/audit';
 import { getKycDocumentUrl } from '@/lib/kyc-storage';
+import { notifyOrganizerOfDecision } from '@/lib/organizer-notifications';
 
 export async function GET(req: NextRequest) {
   try {
@@ -157,6 +158,21 @@ export async function POST(req: NextRequest) {
     });
 
     const history = await getVerificationHistory(verificationId);
+
+    if ((action === 'approve' && current.status !== 'APPROVED') || (action === 'reject' && current.status !== 'REJECTED')) {
+      const organizers = await query<{ email: string; fullName: string }>(
+        'SELECT email, fullName FROM users WHERE uid = ? LIMIT 1',
+        [current.userId]
+      );
+      await notifyOrganizerOfDecision({
+        to: organizers[0]?.email || '',
+        recipientName: organizers[0]?.fullName,
+        approvedItem: 'organizer verification',
+        decision: action === 'approve' ? 'approved' : 'rejected',
+        title: current.businessName || current.legalName || 'Organizer verification',
+        reason: action === 'reject' ? rejectionReason : null,
+      });
+    }
 
     return NextResponse.json({
       success: true,

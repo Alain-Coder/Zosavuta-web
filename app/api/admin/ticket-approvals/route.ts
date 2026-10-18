@@ -3,6 +3,8 @@ import { randomBytes } from 'crypto';
 import { query, execute } from '@/lib/db';
 import { getUserAdminRole } from '@/lib/security-controls';
 import { getAuthUser } from '@/lib/auth-server';
+import { notifyOrganizerOfDecision } from '@/lib/organizer-notifications';
+import { getEventCoverUrl } from '@/lib/event-storage';
 
 export async function GET(req: NextRequest) {
   try {
@@ -27,7 +29,13 @@ export async function GET(req: NextRequest) {
        ORDER BY s.createdAt DESC`
     );
 
-    return NextResponse.json({ success: true, submissions });
+    return NextResponse.json({
+      success: true,
+      submissions: submissions.map((submission: any) => ({
+        ...submission,
+        image: getEventCoverUrl(submission.image),
+      })),
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Failed to fetch ticket approval queue' }, { status: 500 });
   }
@@ -113,12 +121,48 @@ export async function POST(req: NextRequest) {
         [adminId, eventId, submissionId]
       );
 
+      const organizers = await query<{ email: string; fullName: string }>(
+        'SELECT email, fullName FROM users WHERE uid = ? LIMIT 1',
+        [sub.organizerId]
+      );
+      if (sub.status !== 'approved') {
+        await notifyOrganizerOfDecision({
+          to: organizers[0]?.email || '',
+          recipientName: organizers[0]?.fullName,
+          approvedItem: 'event submission',
+          decision: 'approved',
+          title: sub.title || 'Your event',
+          eventUrl: String(eventId),
+        });
+      }
+
       return NextResponse.json({ success: true, message: 'Ticket configuration approved and event activated', eventId });
     } else if (action === 'reject') {
+      const submissions = await query<any>(
+        `SELECT s.*, u.email AS organizerEmail, u.fullName AS organizerName
+         FROM event_submissions s
+         LEFT JOIN users u ON u.uid = s.organizerId
+         WHERE s.id = ?`,
+        [submissionId]
+      );
+      const sub = submissions[0];
+      if (!sub) return NextResponse.json({ error: 'Submission not found' }, { status: 404 });
+
       await execute(
         `UPDATE event_submissions SET status = 'rejected', rejectionReason = ?, reviewedBy = ?, reviewedAt = NOW() WHERE id = ?`,
         [rejectionReason || 'Ticket configuration rejected', adminId, submissionId]
       );
+
+      if (sub.status !== 'rejected') {
+        await notifyOrganizerOfDecision({
+          to: sub.organizerEmail || '',
+          recipientName: sub.organizerName,
+          approvedItem: 'event submission',
+          decision: 'rejected',
+          title: sub.title || 'Your event',
+          reason: rejectionReason || 'Ticket configuration rejected',
+        });
+      }
 
       return NextResponse.json({ success: true, message: 'Ticket configuration rejected' });
     }

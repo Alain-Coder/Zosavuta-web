@@ -69,8 +69,11 @@ export default function HomePage() {
         const data = await res.json();
 
         if (data.success && Array.isArray(data.events)) {
-          setEvents(data.events);
-          setFilteredEvents(data.events);
+          const visibleEvents = data.events.filter(
+            (event: Event) => event.status !== 'suspended' && event.status === 'active'
+          );
+          setEvents(visibleEvents);
+          setFilteredEvents(visibleEvents);
         } else {
           setEvents([]);
           setFilteredEvents([]);

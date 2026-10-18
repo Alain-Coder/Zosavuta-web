@@ -1,6 +1,7 @@
 import mysql, { Pool, PoolConnection, ResultSetHeader } from 'mysql2/promise';
 
 import type { Event } from '@/types/event';
+import { getEventCoverUrl } from '@/lib/event-storage';
 export type { Event };
 
 let pool: Pool | null = null;
@@ -86,7 +87,7 @@ export function formatRowToEvent(row: any): Event {
     time: row.time ? String(row.time).substring(0, 5) : '',
     location: row.location || '',
     venue: row.venue || '',
-    image: row.image || '/images/hero-bg.jpg',
+    image: getEventCoverUrl(row.image) || '/images/hero-bg.jpg',
     price: rawPrice,
     ticketsTotal: parseInt(row.ticketsTotal || '0', 10),
     ticketsAvailable: parseInt(row.ticketsAvailable || '0', 10),

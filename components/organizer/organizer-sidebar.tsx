@@ -30,6 +30,7 @@ import { auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { clearSessionExpiry } from '@/lib/auth-session';
 import { Button } from '@/components/ui/button';
+import { getAuthHeaders } from '@/lib/auth-client';
 
 const NAV_ITEMS = [
   { href: '/organizer/dashboard', label: 'Dashboard', icon: LayoutDashboardIcon },
@@ -48,7 +49,7 @@ export function OrganizerSidebar() {
     const fetchRole = async () => {
       if (!auth.currentUser) return;
       try {
-        const res = await fetch(`/api/users/${auth.currentUser.uid}`);
+        const res = await fetch(`/api/users/${auth.currentUser.uid}`, { headers: await getAuthHeaders() });
         if (res.ok) {
           const data = await res.json();
           setUserRole(data.role);

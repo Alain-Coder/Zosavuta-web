@@ -3,6 +3,7 @@ import { writeFile, mkdir, unlink } from 'fs/promises';
 import path from 'path';
 import { getAuthUser, canOrganizeEvents } from '@/lib/auth-server';
 import { checkOrganizerIsApproved } from '@/lib/organizer-verification';
+import { getEventUploadDirectory } from '@/lib/event-storage';
 
 const MAX_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -41,13 +42,13 @@ export async function POST(req: NextRequest) {
 
     const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
     const filename = `${user.uid}-${Date.now()}.${ext}`;
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'events');
+    const uploadDir = getEventUploadDirectory();
 
     await mkdir(uploadDir, { recursive: true });
     const buffer = Buffer.from(await file.arrayBuffer());
     await writeFile(path.join(uploadDir, filename), buffer);
 
-    return NextResponse.json({ url: `/uploads/events/${filename}` });
+    return NextResponse.json({ url: `/api/uploads/events/${filename}` });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Upload failed';
     return NextResponse.json({ error: message }, { status: 500 });
@@ -63,15 +64,18 @@ export async function DELETE(req: NextRequest) {
     const body = await req.json();
     const url: string = body.url || '';
     // Only allow deleting files that belong to this user within the events upload folder
-    if (!url.startsWith('/uploads/events/') || url.includes('..')) {
+    if (!url.startsWith('/uploads/events/') && !url.startsWith('/api/uploads/events/')) {
       return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
     }
     const filename = path.basename(url);
+    if (!/^[A-Za-z0-9_-]+-\d+\.(jpg|png|webp)$/i.test(filename)) {
+      return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
+    }
     // Safety: filename must start with the user's uid so they can only delete their own files
     if (!filename.startsWith(user.uid)) {
       return NextResponse.json({ error: 'You can only delete your own uploads' }, { status: 403 });
     }
-    const filePath = path.join(process.cwd(), 'public', 'uploads', 'events', filename);
+    const filePath = path.join(getEventUploadDirectory(), filename);
     await unlink(filePath).catch(() => {}); // ignore if already gone
     return NextResponse.json({ success: true });
   } catch (err: unknown) {

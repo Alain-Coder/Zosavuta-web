@@ -6,6 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/use-auth';
@@ -38,6 +46,11 @@ import {
   HistoryIcon,
 } from 'lucide-react';
 
+type ReauthenticationRequest = {
+  resolve: () => void;
+  reject: (error: Error) => void;
+};
+
 export default function OrganizerVerificationPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -48,6 +61,11 @@ export default function OrganizerVerificationPage() {
   const [uploadingCert, setUploadingCert] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<File | null>(null);
   const [selectedCertificate, setSelectedCertificate] = useState<File | null>(null);
+  const [reauthDialogOpen, setReauthDialogOpen] = useState(false);
+  const [reauthPassword, setReauthPassword] = useState('');
+  const [reauthError, setReauthError] = useState('');
+  const [reauthenticating, setReauthenticating] = useState(false);
+  const [reauthenticationRequest, setReauthenticationRequest] = useState<ReauthenticationRequest | null>(null);
 
   // Status & History from backend
   const [status, setStatus] = useState<OrganizerVerificationStatus>('NOT_STARTED');
@@ -186,6 +204,37 @@ export default function OrganizerVerificationPage() {
     return (Number(applicantOwnership) || 0) + totalShareholdersOwnership;
   }, [applicantOwnership, totalShareholdersOwnership]);
 
+  const requestPasswordReauthentication = () => new Promise<void>((resolve, reject) => {
+    setReauthPassword('');
+    setReauthError('');
+    setReauthenticationRequest({ resolve, reject });
+    setReauthDialogOpen(true);
+  });
+
+  const cancelPasswordReauthentication = () => {
+    setReauthDialogOpen(false);
+    if (reauthenticationRequest) {
+      reauthenticationRequest.reject(new Error('Reauthentication cancelled.'));
+      setReauthenticationRequest(null);
+    }
+  };
+
+  const submitPasswordReauthentication = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setReauthenticating(true);
+    setReauthError('');
+    try {
+      await reauthenticateWithPassword(reauthPassword);
+      reauthenticationRequest?.resolve();
+      setReauthenticationRequest(null);
+      setReauthDialogOpen(false);
+    } catch (error) {
+      setReauthError(error instanceof Error ? error.message : 'Unable to verify your password.');
+    } finally {
+      setReauthenticating(false);
+    }
+  };
+
   const handleFileSelection = (file: File, type: 'doc' | 'cert') => {
     const isDoc = type === 'doc';
     if (isDoc) setSelectedDocument(file);
@@ -278,7 +327,7 @@ export default function OrganizerVerificationPage() {
         let response = await send();
         let result = await response.json();
         if (response.status === 403 && result.code === 'RECENT_AUTH_REQUIRED') {
-          await reauthenticateWithPassword();
+          await requestPasswordReauthentication();
           response = await send();
           result = await response.json();
         }
@@ -1095,6 +1144,52 @@ export default function OrganizerVerificationPage() {
           </div>
         </Card>
       )}
+
+      <Dialog
+        open={reauthDialogOpen}
+        onOpenChange={(open) => {
+          if (open) setReauthDialogOpen(true);
+          else cancelPasswordReauthentication();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm your identity</DialogTitle>
+            <DialogDescription>
+              Your sign-in is older than 10 minutes. Enter your account password to continue securely.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(event) => void submitPasswordReauthentication(event)} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="reauth-password">Password</Label>
+              <Input
+                id="reauth-password"
+                type="password"
+                autoComplete="current-password"
+                value={reauthPassword}
+                onChange={(event) => setReauthPassword(event.target.value)}
+                disabled={reauthenticating}
+                autoFocus
+              />
+              {reauthError && <p role="alert" className="text-sm text-destructive">{reauthError}</p>}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={reauthenticating}
+                onClick={cancelPasswordReauthentication}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={reauthenticating || !reauthPassword}>
+                {reauthenticating ? <Loader2Icon className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Continue
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
